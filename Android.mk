@@ -27,7 +27,7 @@ LOCAL_STATIC_JAVA_LIBRARIES := \
     icu4j-icudata-jarjar \
     icu4j-icutzdata-jarjar \
     ims-common \
-    android.test.base \
+    android.test.base_static \
     libphonenumber-platform \
     okhttp \
     services \
