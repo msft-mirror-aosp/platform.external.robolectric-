@@ -32,7 +32,8 @@ LOCAL_STATIC_JAVA_LIBRARIES := \
     okhttp \
     services \
     services.accessibility \
-    telephony-common
+    telephony-common \
+    updatable-media
 
 # include the uncompiled/raw resources in the jar
 # Eventually these raw resources will be removed once the transition to
