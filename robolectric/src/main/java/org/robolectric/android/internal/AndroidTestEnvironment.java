@@ -83,6 +83,7 @@ import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
 import org.robolectric.shadows.ShadowPackageParser._Package_;
+import org.robolectric.util.Logger;
 import org.robolectric.util.PerfStatsCollector;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.Scheduler;
@@ -149,6 +150,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       loggingInitialized = true;
     }
 
+    Logger.debug("Robolectric Test Configuration: " + configuration.map());
     ConscryptMode.Mode conscryptMode = configuration.get(ConscryptMode.Mode.class);
     Security.removeProvider(CONSCRYPT_PROVIDER);
     if (conscryptMode != ConscryptMode.Mode.OFF) {
