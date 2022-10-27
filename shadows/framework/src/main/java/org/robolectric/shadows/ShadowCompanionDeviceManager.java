@@ -3,6 +3,9 @@ package org.robolectric.shadows;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 
+import android.annotation.NonNull;
+import android.annotation.UserIdInt;
+import android.companion.AssociatedDevice;
 import android.companion.AssociationInfo;
 import android.companion.AssociationRequest;
 import android.companion.CompanionDeviceManager;
@@ -21,6 +24,10 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
+import org.robolectric.util.reflector.ForType;
+import org.robolectric.util.reflector.Accessor;
+import org.robolectric.util.reflector.Reflector;
+
 
 /** Shadow for CompanionDeviceManager. */
 @Implements(value = CompanionDeviceManager.class, minSdk = VERSION_CODES.O)
@@ -136,13 +143,16 @@ public class ShadowCompanionDeviceManager {
         MacAddress.fromString(info.deviceMacAddress()),
         info.displayName(),
         info.deviceProfile(),
+        info.associatedDevice(),
         info.selfManaged(),
         info.notifyOnDeviceNearby(),
+        info.revoked(),
         info.timeApprovedMs(),
         info.lastTimeConnectedMs());
   }
 
   private RoboAssociationInfo createShadowAssociationInfo(AssociationInfo info) {
+    var ref_info = Reflector.reflector(_AssociationInfo_.class, info);
     return RoboAssociationInfo.create(
         info.getId(),
         info.getUserId(),
@@ -150,10 +160,19 @@ public class ShadowCompanionDeviceManager {
         info.getDeviceMacAddress().toString(),
         info.getDisplayName(),
         info.getDeviceProfile(),
+            ref_info.getFullAssociatedDevice(),
         info.isSelfManaged(),
         info.isNotifyOnDeviceNearby(),
+        info.isRevoked(),
         info.getTimeApprovedMs(),
         info.getLastTimeConnectedMs());
+  }
+
+  @ForType(AssociationInfo.class)
+  public interface _AssociationInfo_ {
+
+    @Accessor("mAssociatedDevice")
+    AssociatedDevice getFullAssociatedDevice();
   }
 
   /**
@@ -178,9 +197,13 @@ public class ShadowCompanionDeviceManager {
     @Nullable
     public abstract String deviceProfile();
 
+    public abstract AssociatedDevice associatedDevice();
+
     public abstract boolean selfManaged();
 
     public abstract boolean notifyOnDeviceNearby();
+
+    public abstract boolean revoked();
 
     public abstract long timeApprovedMs();
 
@@ -203,8 +226,10 @@ public class ShadowCompanionDeviceManager {
         String deviceMacAddress,
         CharSequence displayName,
         String deviceProfile,
+        AssociatedDevice associatedDevice,
         boolean selfManaged,
         boolean notifyOnDeviceNearby,
+        boolean revoked,
         long timeApprovedMs,
         long lastTimeConnectedMs) {
       return RoboAssociationInfo.builder()
@@ -214,9 +239,11 @@ public class ShadowCompanionDeviceManager {
           .setDeviceMacAddress(deviceMacAddress)
           .setDisplayName(displayName)
           .setDeviceProfile(deviceProfile)
+              .setAssociatedDevice(associatedDevice)
           .setSelfManaged(selfManaged)
           .setNotifyOnDeviceNearby(notifyOnDeviceNearby)
           .setTimeApprovedMs(timeApprovedMs)
+              .setRevoked(revoked)
           .setLastTimeConnectedMs(lastTimeConnectedMs)
           .build();
     }
@@ -238,7 +265,11 @@ public class ShadowCompanionDeviceManager {
 
       public abstract Builder setSelfManaged(boolean selfManaged);
 
+      public abstract Builder setAssociatedDevice(AssociatedDevice device);
+
       public abstract Builder setNotifyOnDeviceNearby(boolean notifyOnDeviceNearby);
+
+      public abstract Builder setRevoked(boolean revoked);
 
       public abstract Builder setTimeApprovedMs(long timeApprovedMs);
 
