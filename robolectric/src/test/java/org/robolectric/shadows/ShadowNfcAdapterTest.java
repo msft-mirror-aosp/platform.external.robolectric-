@@ -209,6 +209,6 @@ public class ShadowNfcAdapterTest {
   }
 
   private static Tag createMockTag() {
-    return Tag.createMockTag(new byte[0], new int[0], new Bundle[0]);
+    return Tag.createMockTag(new byte[0], new int[0], new Bundle[0], 0L);
   }
 }
