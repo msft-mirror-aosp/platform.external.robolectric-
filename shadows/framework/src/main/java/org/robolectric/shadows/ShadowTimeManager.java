@@ -26,7 +26,7 @@ public class ShadowTimeManager {
       new TimeZoneCapabilities.Builder(UserHandle.CURRENT)
           .setConfigureAutoDetectionEnabledCapability(Capabilities.CAPABILITY_POSSESSED)
           .setConfigureGeoDetectionEnabledCapability(Capabilities.CAPABILITY_POSSESSED)
-          .setSuggestManualTimeZoneCapability(Capabilities.CAPABILITY_POSSESSED)
+          .setSetManualTimeZoneCapability(Capabilities.CAPABILITY_POSSESSED)
           .build();
 
   private TimeZoneConfiguration timeZoneConfiguration;
