@@ -7,7 +7,6 @@ import static org.junit.Assert.assertThrows;
 import static org.robolectric.Shadows.shadowOf;
 
 import android.app.Application;
-import android.companion.AssociatedDevice;
 import android.companion.AssociationInfo;
 import android.companion.AssociationRequest;
 import android.companion.CompanionDeviceManager;
@@ -128,7 +127,6 @@ public class ShadowCompanionDeviceManagerTest {
             MacAddress.fromString(MAC_ADDRESS),
             "displayName",
             "deviceProfile",
-            /* AssociatedDevice*/ null,
             /* selfManaged= */ false,
             /* notifyOnDeviceNearby= */ false,
             /* revoked */ false,
