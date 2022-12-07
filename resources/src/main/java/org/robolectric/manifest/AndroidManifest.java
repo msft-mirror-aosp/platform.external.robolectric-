@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.xml.parsers.DocumentBuilder;
@@ -21,6 +22,7 @@ import org.robolectric.pluginapi.UsesSdk;
 import org.robolectric.res.Fs;
 import org.robolectric.res.ResourcePath;
 import org.robolectric.res.ResourceTable;
+import org.robolectric.util.Logger;
 import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
@@ -165,6 +167,8 @@ public class AndroidManifest implements UsesSdk {
       return;
     }
 
+    Logger.debug("Manifest file location: " + androidManifestFile);
+
     if (androidManifestFile != null && Files.exists(androidManifestFile)) {
       try {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
@@ -173,6 +177,9 @@ public class AndroidManifest implements UsesSdk {
         InputStream inputStream = Fs.getInputStream(androidManifestFile);
         Document manifestDocument = db.parse(inputStream);
         inputStream.close();
+
+        Logger.debug("Manifest doc:\n" + Files.readAllLines(androidManifestFile).stream().collect(
+                Collectors.joining("\n")));
 
         if (!packageNameIsOverridden()) {
           packageName = getTagAttributeText(manifestDocument, "manifest", "package");
