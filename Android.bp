@@ -171,6 +171,7 @@ java_host_for_device {
     libs: ["Robolectric_all_upstream"],
     visibility: [
         "//platform_testing/robolab/roboStandaloneProj/tests",
+        "//external/mobile-data-download/javatests"
     ],
 }
 
