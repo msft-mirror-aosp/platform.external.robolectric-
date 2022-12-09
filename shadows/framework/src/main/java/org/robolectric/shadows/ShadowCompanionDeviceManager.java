@@ -22,6 +22,7 @@ import java.util.concurrent.Executor;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 
+
 /** Shadow for CompanionDeviceManager. */
 @Implements(value = CompanionDeviceManager.class, minSdk = VERSION_CODES.O)
 public class ShadowCompanionDeviceManager {
@@ -138,6 +139,7 @@ public class ShadowCompanionDeviceManager {
         info.deviceProfile(),
         info.selfManaged(),
         info.notifyOnDeviceNearby(),
+        info.revoked(),
         info.timeApprovedMs(),
         info.lastTimeConnectedMs());
   }
@@ -152,6 +154,7 @@ public class ShadowCompanionDeviceManager {
         info.getDeviceProfile(),
         info.isSelfManaged(),
         info.isNotifyOnDeviceNearby(),
+        info.isRevoked(),
         info.getTimeApprovedMs(),
         info.getLastTimeConnectedMs());
   }
@@ -182,6 +185,8 @@ public class ShadowCompanionDeviceManager {
 
     public abstract boolean notifyOnDeviceNearby();
 
+    public abstract boolean revoked();
+
     public abstract long timeApprovedMs();
 
     public abstract long lastTimeConnectedMs();
@@ -205,6 +210,7 @@ public class ShadowCompanionDeviceManager {
         String deviceProfile,
         boolean selfManaged,
         boolean notifyOnDeviceNearby,
+        boolean revoked,
         long timeApprovedMs,
         long lastTimeConnectedMs) {
       return RoboAssociationInfo.builder()
@@ -213,10 +219,10 @@ public class ShadowCompanionDeviceManager {
           .setPackageName(packageName)
           .setDeviceMacAddress(deviceMacAddress)
           .setDisplayName(displayName)
-          .setDeviceProfile(deviceProfile)
           .setSelfManaged(selfManaged)
           .setNotifyOnDeviceNearby(notifyOnDeviceNearby)
           .setTimeApprovedMs(timeApprovedMs)
+              .setRevoked(revoked)
           .setLastTimeConnectedMs(lastTimeConnectedMs)
           .build();
     }
@@ -239,6 +245,8 @@ public class ShadowCompanionDeviceManager {
       public abstract Builder setSelfManaged(boolean selfManaged);
 
       public abstract Builder setNotifyOnDeviceNearby(boolean notifyOnDeviceNearby);
+
+      public abstract Builder setRevoked(boolean revoked);
 
       public abstract Builder setTimeApprovedMs(long timeApprovedMs);
 
