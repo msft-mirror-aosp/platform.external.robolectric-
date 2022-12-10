@@ -3,9 +3,14 @@ package org.robolectric.plugins;
 import com.google.auto.service.AutoService;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
+import java.util.stream.Collectors;
+
 import javax.annotation.Priority;
 import javax.inject.Inject;
 import org.robolectric.internal.dependency.DependencyJar;
@@ -13,6 +18,7 @@ import org.robolectric.internal.dependency.DependencyResolver;
 import org.robolectric.internal.dependency.LocalDependencyResolver;
 import org.robolectric.internal.dependency.PropertiesDependencyResolver;
 import org.robolectric.res.Fs;
+import org.robolectric.util.Logger;
 import org.robolectric.util.ReflectionHelpers;
 
 /**
@@ -60,13 +66,16 @@ public class LegacyDependencyResolver implements DependencyResolver {
   private static DependencyResolver pickOne(
       Properties properties, DefinitelyNotAClassLoader classLoader) {
     String propPath = properties.getProperty("robolectric-deps.properties");
+    Logger.debug("Robolectric-deps.properties path :" + propPath);
     if (propPath != null) {
-      return new PropertiesDependencyResolver(Paths.get(propPath));
+      Path path = Paths.get(propPath);
+      return new PropertiesDependencyResolver(path);
     }
 
     String dependencyDir = properties.getProperty("robolectric.dependency.dir");
     if (dependencyDir != null
         || Boolean.parseBoolean(properties.getProperty("robolectric.offline"))) {
+      Logger.debug("Dependency dir: " + dependencyDir);
       return new LocalDependencyResolver(new File(dependencyDir == null ? "." : dependencyDir));
     }
 
