@@ -100,7 +100,7 @@ public class ShadowViewRootImpl {
           ClassParameter.from(boolean.class, false), /* alwaysConsumeSystemBars */
           ClassParameter.from(int.class, 0), /* displayId */
           ClassParameter.from(int.class, 0), /* syncSeqId */
-          ClassParameter.from(int.class, 0) /* resizeMode */);
+          ClassParameter.from(boolean.class, false) /* dragResizing */);
     } else if (RuntimeEnvironment.getApiLevel() > Build.VERSION_CODES.R) {
       Display display = getDisplay();
       Rect frame = new Rect();
