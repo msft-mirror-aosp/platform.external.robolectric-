@@ -131,6 +131,7 @@ public class ShadowTelephonyManager {
   private int carrierIdFromSimMccMnc;
   private String subscriberId;
   private /*UiccSlotInfo[]*/ Object uiccSlotInfos;
+  private /*UiccCardInfo[]*/ Object uiccCardsInfo;
   private String visualVoicemailPackageName = null;
   private SignalStrength signalStrength;
   private boolean dataEnabled = false;
@@ -163,7 +164,8 @@ public class ShadowTelephonyManager {
     callComposerStatus = 0;
   }
 
-  public static void setCallComposerStatus(int callComposerStatus) {
+  @Implementation(minSdk = S)
+  protected void setCallComposerStatus(int callComposerStatus) {
     ShadowTelephonyManager.callComposerStatus = callComposerStatus;
   }
 
@@ -485,6 +487,18 @@ public class ShadowTelephonyManager {
   @HiddenApi
   protected /*UiccSlotInfo[]*/ Object getUiccSlotsInfo() {
     return uiccSlotInfos;
+  }
+
+  /** Sets the UICC cards information returned by {@link #getUiccCardsInfo()}. */
+  public void setUiccCardsInfo(/*UiccCardsInfo[]*/ Object uiccCardsInfo) {
+    this.uiccCardsInfo = uiccCardsInfo;
+  }
+
+  /** Returns the UICC cards information set by {@link #setUiccCardsInfo}. */
+  @Implementation(minSdk = Q)
+  @HiddenApi
+  protected /*UiccSlotInfo[]*/ Object getUiccCardsInfo() {
+    return uiccCardsInfo;
   }
 
   /** Clears {@code slotIndex} to state mapping and resets to default state. */
@@ -898,6 +912,7 @@ public class ShadowTelephonyManager {
    */
   @Implementation(minSdk = O)
   protected TelephonyManager createForPhoneAccountHandle(PhoneAccountHandle handle) {
+    checkReadPhoneStatePermission();
     return phoneAccountToTelephonyManagers.get(handle);
   }
 
@@ -1075,6 +1090,9 @@ public class ShadowTelephonyManager {
    */
   @Implementation(minSdk = Build.VERSION_CODES.Q)
   protected boolean isEmergencyNumber(String number) {
+    if (ShadowServiceManager.getService(Context.TELEPHONY_SERVICE) == null) {
+      throw new IllegalStateException("telephony service is null.");
+    }
 
     if (number == null) {
       return false;
