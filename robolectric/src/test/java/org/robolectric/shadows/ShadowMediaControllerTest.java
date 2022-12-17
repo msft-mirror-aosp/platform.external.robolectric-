@@ -21,6 +21,7 @@ import android.media.session.MediaController;
 import android.media.session.MediaController.PlaybackInfo;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.os.Bundle;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.ArrayList;
@@ -134,6 +135,16 @@ public final class ShadowMediaControllerTest {
 
   @Test
   @Config(minSdk = LOLLIPOP)
+  public void setAndGetExtras() {
+    String extraKey = "test.extra.key";
+    Bundle extras = new Bundle();
+    extras.putBoolean(extraKey, true);
+    shadowMediaController.setExtras(extras);
+    assertEquals(true, mediaController.getExtras().getBoolean(extraKey, false));
+  }
+
+  @Test
+  @Config(minSdk = LOLLIPOP)
   public void registerAndGetCallback() {
     List<MediaController.Callback> mockCallbacks = new ArrayList<>();
     assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
@@ -146,6 +157,23 @@ public final class ShadowMediaControllerTest {
     MediaController.Callback mockCallback2 = mock(MediaController.Callback.class);
     mockCallbacks.add(mockCallback2);
     mediaController.registerCallback(mockCallback2);
+    assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
+  }
+
+  @Test
+  @Config(minSdk = LOLLIPOP)
+  public void registerWithHandlerAndGetCallback() {
+    List<MediaController.Callback> mockCallbacks = new ArrayList<>();
+    assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
+
+    MediaController.Callback mockCallback1 = mock(MediaController.Callback.class);
+    mockCallbacks.add(mockCallback1);
+    mediaController.registerCallback(mockCallback1, null);
+    assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
+
+    MediaController.Callback mockCallback2 = mock(MediaController.Callback.class);
+    mockCallbacks.add(mockCallback2);
+    mediaController.registerCallback(mockCallback2, null);
     assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
   }
 
