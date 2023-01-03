@@ -2,6 +2,7 @@ package org.robolectric.integration.compat.target28
 
 import android.content.Context
 import android.os.Build
+import android.speech.SpeechRecognizer
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,5 +35,16 @@ class NormalCompatibilityTest {
   @Test
   fun `Initialize Activity succeed`() {
     Robolectric.setupActivity(TestActivity::class.java)
+  }
+
+  @Test
+  fun `Initialize TelephonyManager succeed`() {
+    val telephonyManager = application.getSystemService(Context.TELEPHONY_SERVICE)
+    assertThat(telephonyManager).isNotNull()
+  }
+
+  @Test
+  fun `Create speech recognizer succeed`() {
+    assertThat(SpeechRecognizer.createSpeechRecognizer(application)).isNotNull()
   }
 }
