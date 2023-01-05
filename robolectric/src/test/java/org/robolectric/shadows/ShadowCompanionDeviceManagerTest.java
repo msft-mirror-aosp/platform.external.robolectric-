@@ -135,7 +135,8 @@ public class ShadowCompanionDeviceManagerTest {
             /* notifyOnDeviceNearby= */ false,
             /* revoked */ false,
             /* timeApprovedMs= */ 0,
-            /* lastTimeConnectedMs= */ 0);
+            /* lastTimeConnectedMs= */ 0,
+            /* systemDataSyncFlags= */ -1);
     assertThat(companionDeviceManager.getAssociations()).isEmpty();
     shadowCompanionDeviceManager.addAssociation(info);
     assertThat(companionDeviceManager.getMyAssociations()).contains(info);
