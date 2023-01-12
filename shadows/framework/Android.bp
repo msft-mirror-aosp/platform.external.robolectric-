@@ -60,8 +60,8 @@ java_library_host {
         "robolectric-host-android_all_upstream",
     ],
     plugins: [
-        "auto_value_plugin",
-        "auto_value_builder_plugin",
+        "auto_value_plugin_1.9",
+        "auto_value_builder_plugin_1.9",
         "Robolectric_processor_upstream",
     ],
 
