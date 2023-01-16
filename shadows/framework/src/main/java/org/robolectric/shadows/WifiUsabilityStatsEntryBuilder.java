@@ -2,9 +2,11 @@ package org.robolectric.shadows;
 
 import android.net.wifi.WifiUsabilityStatsEntry;
 import android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats;
+import android.net.wifi.WifiUsabilityStatsEntry.LinkStats;
 import android.net.wifi.WifiUsabilityStatsEntry.RadioStats;
 import android.net.wifi.WifiUsabilityStatsEntry.RateStats;
 import android.os.Build.VERSION_CODES;
+import android.util.SparseArray;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
@@ -111,7 +113,9 @@ public class WifiUsabilityStatsEntryBuilder {
           cellularDataNetworkType,
           cellularSignalStrengthDbm,
           cellularSignalStrengthDb,
-          isSameRegisteredCell);
+          isSameRegisteredCell,
+          new SparseArray<LinkStats>());
+
     }
   }
 
