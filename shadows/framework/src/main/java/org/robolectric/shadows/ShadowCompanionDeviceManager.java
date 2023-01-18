@@ -148,7 +148,8 @@ public class ShadowCompanionDeviceManager {
         info.notifyOnDeviceNearby(),
         info.revoked(),
         info.timeApprovedMs(),
-        info.lastTimeConnectedMs());
+        info.lastTimeConnectedMs(),
+        info.systemDataSyncFlags());
   }
 
   private RoboAssociationInfo createShadowAssociationInfo(AssociationInfo info) {
@@ -165,7 +166,8 @@ public class ShadowCompanionDeviceManager {
         info.isNotifyOnDeviceNearby(),
         info.isRevoked(),
         info.getTimeApprovedMs(),
-        info.getLastTimeConnectedMs());
+        info.getLastTimeConnectedMs(),
+        info.getSystemDataSyncFlags());
   }
 
   @ForType(AssociationInfo.class)
@@ -209,6 +211,8 @@ public class ShadowCompanionDeviceManager {
 
     public abstract long lastTimeConnectedMs();
 
+    public abstract int systemDataSyncFlags();
+
     public static Builder builder() {
       return new AutoValue_ShadowCompanionDeviceManager_RoboAssociationInfo.Builder()
           .setId(1)
@@ -216,7 +220,8 @@ public class ShadowCompanionDeviceManager {
           .setSelfManaged(false)
           .setNotifyOnDeviceNearby(false)
           .setTimeApprovedMs(0)
-          .setLastTimeConnectedMs(0);
+          .setLastTimeConnectedMs(0)
+          .setSystemDataSyncFlags(-1);
     }
 
     public static RoboAssociationInfo create(
@@ -231,7 +236,8 @@ public class ShadowCompanionDeviceManager {
         boolean notifyOnDeviceNearby,
         boolean revoked,
         long timeApprovedMs,
-        long lastTimeConnectedMs) {
+        long lastTimeConnectedMs,
+        int systemDataSyncFlags) {
       return RoboAssociationInfo.builder()
           .setId(id)
           .setUserId(userId)
@@ -245,6 +251,7 @@ public class ShadowCompanionDeviceManager {
           .setTimeApprovedMs(timeApprovedMs)
               .setRevoked(revoked)
           .setLastTimeConnectedMs(lastTimeConnectedMs)
+          .setSystemDataSyncFlags(systemDataSyncFlags)
           .build();
     }
 
@@ -274,6 +281,8 @@ public class ShadowCompanionDeviceManager {
       public abstract Builder setTimeApprovedMs(long timeApprovedMs);
 
       public abstract Builder setLastTimeConnectedMs(long lastTimeConnectedMs);
+
+      public abstract Builder setSystemDataSyncFlags(int flags);
 
       public abstract RoboAssociationInfo build();
     }

@@ -220,7 +220,6 @@ public class ShadowNfcAdapter {
     }
     if (RuntimeEnvironment.getApiLevel() >= Build.VERSION_CODES.Q) {
       nfcAdapterReflector.setHasNfcFeature(false);
-      nfcAdapterReflector.setHasBeamFeature(false);
     }
   }
 
@@ -233,10 +232,6 @@ public class ShadowNfcAdapter {
     @Static
     @Accessor("sHasNfcFeature")
     void setHasNfcFeature(boolean hasNfcFeature);
-
-    @Static
-    @Accessor("sHasBeamFeature")
-    void setHasBeamFeature(boolean hasBeamFeature);
 
     @Static
     @Accessor("sNfcAdapters")
