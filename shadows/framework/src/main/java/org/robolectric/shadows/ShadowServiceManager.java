@@ -34,6 +34,7 @@ import android.app.usage.IUsageStatsManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.IBluetooth;
 import android.bluetooth.IBluetoothManager;
+import android.companion.ICompanionDeviceManager;
 import android.content.Context;
 import android.content.IClipboard;
 import android.content.IRestrictionsManager;
@@ -41,6 +42,7 @@ import android.content.integrity.IAppIntegrityManager;
 import android.content.pm.ICrossProfileApps;
 import android.content.pm.IShortcutService;
 import android.content.rollback.IRollbackManager;
+import android.hardware.ISensorPrivacyManager;
 import android.hardware.biometrics.IAuthService;
 import android.hardware.biometrics.IBiometricService;
 import android.hardware.fingerprint.IFingerprintService;
@@ -173,6 +175,7 @@ public class ShadowServiceManager {
       addBinderService("mount", IStorageManager.class);
       addBinderService(Context.WIFI_AWARE_SERVICE, IWifiAwareManager.class);
       addBinderService(Context.STORAGE_STATS_SERVICE, IStorageStatsManager.class);
+      addBinderService(Context.COMPANION_DEVICE_SERVICE, ICompanionDeviceManager.class);
     } else {
       addBinderService("mount", "android.os.storage.IMountService");
     }
@@ -205,6 +208,7 @@ public class ShadowServiceManager {
       addBinderService(Context.UWB_SERVICE, IUwbAdapter.class);
       addBinderService(Context.VCN_MANAGEMENT_SERVICE, IVcnManagementService.class);
       addBinderService(Context.TRANSLATION_MANAGER_SERVICE, ITranslationManager.class);
+      addBinderService(Context.SENSOR_PRIVACY_SERVICE, ISensorPrivacyManager.class);
     }
     if (RuntimeEnvironment.getApiLevel() >= TIRAMISU) {
       addBinderService(Context.AMBIENT_CONTEXT_SERVICE, IAmbientContextManager.class);
