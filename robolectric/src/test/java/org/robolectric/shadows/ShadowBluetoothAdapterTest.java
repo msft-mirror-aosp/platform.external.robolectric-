@@ -599,7 +599,8 @@ public class ShadowBluetoothAdapterTest {
                 PendingIntent.getBroadcast(
                     getApplicationContext(),
                     /* requestCode= */ 0,
-                    new Intent("com.dummy.action.DUMMY_ACTION"),
+                    new Intent("com.dummy.action.DUMMY_ACTION")
+                            .setPackage(getApplicationContext().getPackageName()),
                     /* flags= */ PendingIntent.FLAG_MUTABLE)));
   }
 

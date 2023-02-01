@@ -1,13 +1,19 @@
 package org.robolectric.shadows;
 
+import static android.app.time.DetectorStatusTypes.DETECTION_ALGORITHM_STATUS_RUNNING;
+import static android.app.time.DetectorStatusTypes.DETECTOR_STATUS_RUNNING;
+
 import android.annotation.SystemApi;
 import android.app.time.Capabilities;
 import android.app.time.Capabilities.CapabilityState;
 import android.app.time.ExternalTimeSuggestion;
+import android.app.time.LocationTimeZoneAlgorithmStatus;
+import android.app.time.TelephonyTimeZoneAlgorithmStatus;
 import android.app.time.TimeManager;
 import android.app.time.TimeZoneCapabilities;
 import android.app.time.TimeZoneCapabilitiesAndConfig;
 import android.app.time.TimeZoneConfiguration;
+import android.app.time.TimeZoneDetectorStatus;
 import android.os.Build.VERSION_CODES;
 import android.os.UserHandle;
 import java.util.Objects;
@@ -25,9 +31,18 @@ public class ShadowTimeManager {
   private TimeZoneCapabilities timeZoneCapabilities =
       new TimeZoneCapabilities.Builder(UserHandle.CURRENT)
           .setConfigureAutoDetectionEnabledCapability(Capabilities.CAPABILITY_POSSESSED)
+          .setUseLocationEnabled(true)
           .setConfigureGeoDetectionEnabledCapability(Capabilities.CAPABILITY_POSSESSED)
-          .setSuggestManualTimeZoneCapability(Capabilities.CAPABILITY_POSSESSED)
+          .setSetManualTimeZoneCapability(Capabilities.CAPABILITY_POSSESSED)
           .build();
+
+  private TimeZoneDetectorStatus detectorStatus =
+          new TimeZoneDetectorStatus(
+                  DETECTOR_STATUS_RUNNING,
+                  new TelephonyTimeZoneAlgorithmStatus(DETECTION_ALGORITHM_STATUS_RUNNING),
+                  new LocationTimeZoneAlgorithmStatus(DETECTION_ALGORITHM_STATUS_RUNNING,
+                          LocationTimeZoneAlgorithmStatus.PROVIDER_STATUS_NOT_READY, null,
+                          LocationTimeZoneAlgorithmStatus.PROVIDER_STATUS_NOT_READY, null));
 
   private TimeZoneConfiguration timeZoneConfiguration;
 
@@ -54,7 +69,8 @@ public class ShadowTimeManager {
   protected TimeZoneCapabilitiesAndConfig getTimeZoneCapabilitiesAndConfig() {
     Objects.requireNonNull(timeZoneConfiguration, "timeZoneConfiguration was not set");
 
-    return new TimeZoneCapabilitiesAndConfig(timeZoneCapabilities, timeZoneConfiguration);
+    return new TimeZoneCapabilitiesAndConfig(
+            detectorStatus, timeZoneCapabilities, timeZoneConfiguration);
   }
 
   @Implementation
