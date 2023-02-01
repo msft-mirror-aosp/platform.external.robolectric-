@@ -77,7 +77,8 @@ public class ShadowTelephonyManager {
   @RealObject protected TelephonyManager realTelephonyManager;
 
   private final Map<PhoneStateListener, Integer> phoneStateRegistrations = new HashMap<>();
-  private final List<TelephonyCallback> telephonyCallbackRegistrations = new ArrayList<>();
+  private final /*List<TelephonyCallback>*/ List<Object> telephonyCallbackRegistrations =
+      new ArrayList<>();
   private final Map<Integer, String> slotIndexToDeviceId = new HashMap<>();
   private final Map<Integer, String> slotIndexToImei = new HashMap<>();
   private final Map<Integer, String> slotIndexToMeid = new HashMap<>();
@@ -87,7 +88,7 @@ public class ShadowTelephonyManager {
       new HashMap<>();
 
   private PhoneStateListener lastListener;
-  private TelephonyCallback lastTelephonyCallback;
+  private /*TelephonyCallback*/ Object lastTelephonyCallback;
   private int lastEventFlags;
 
   private String deviceId;
@@ -131,6 +132,7 @@ public class ShadowTelephonyManager {
   private int carrierIdFromSimMccMnc;
   private String subscriberId;
   private /*UiccSlotInfo[]*/ Object uiccSlotInfos;
+  private /*UiccCardInfo[]*/ Object uiccCardsInfo;
   private String visualVoicemailPackageName = null;
   private SignalStrength signalStrength;
   private boolean dataEnabled = false;
@@ -163,7 +165,8 @@ public class ShadowTelephonyManager {
     callComposerStatus = 0;
   }
 
-  public static void setCallComposerStatus(int callComposerStatus) {
+  @Implementation(minSdk = S)
+  protected void setCallComposerStatus(int callComposerStatus) {
     ShadowTelephonyManager.callComposerStatus = callComposerStatus;
   }
 
@@ -225,7 +228,10 @@ public class ShadowTelephonyManager {
   }
 
   @Implementation(minSdk = S)
-  public void registerTelephonyCallback(Executor executor, TelephonyCallback callback) {
+  public void registerTelephonyCallback(
+      /*Executor*/ Object executor, /*TelephonyCallback*/ Object callback) {
+    Preconditions.checkArgument(executor instanceof Executor);
+    Preconditions.checkArgument(callback instanceof TelephonyCallback);
     lastTelephonyCallback = callback;
     initTelephonyCallback(callback);
     telephonyCallbackRegistrations.add(callback);
@@ -233,17 +239,20 @@ public class ShadowTelephonyManager {
 
   @Implementation(minSdk = TIRAMISU)
   protected void registerTelephonyCallback(
-      int includeLocationData, Executor executor, TelephonyCallback callback) {
+      /*int*/ Object includeLocationData, /*Executor*/
+      Object executor, /*TelephonyCallback*/
+      Object callback) {
+    Preconditions.checkArgument(includeLocationData instanceof Integer);
     registerTelephonyCallback(executor, callback);
   }
 
   @Implementation(minSdk = S)
-  public void unregisterTelephonyCallback(TelephonyCallback callback) {
+  public void unregisterTelephonyCallback(/*TelephonyCallback*/ Object callback) {
     telephonyCallbackRegistrations.remove(callback);
   }
 
   /** Returns the most recent callback passed to #registerTelephonyCallback(). */
-  public TelephonyCallback getLastTelephonyCallback() {
+  public /*TelephonyCallback*/ Object getLastTelephonyCallback() {
     return lastTelephonyCallback;
   }
 
@@ -487,6 +496,18 @@ public class ShadowTelephonyManager {
     return uiccSlotInfos;
   }
 
+  /** Sets the UICC cards information returned by {@link #getUiccCardsInfo()}. */
+  public void setUiccCardsInfo(/*UiccCardsInfo[]*/ Object uiccCardsInfo) {
+    this.uiccCardsInfo = uiccCardsInfo;
+  }
+
+  /** Returns the UICC cards information set by {@link #setUiccCardsInfo}. */
+  @Implementation(minSdk = Q)
+  @HiddenApi
+  protected /*UiccSlotInfo[]*/ Object getUiccCardsInfo() {
+    return uiccCardsInfo;
+  }
+
   /** Clears {@code slotIndex} to state mapping and resets to default state. */
   public void resetSimStates() {
     simStates.clear();
@@ -701,7 +722,7 @@ public class ShadowTelephonyManager {
   }
 
   @CallSuper
-  protected void initTelephonyCallback(TelephonyCallback callback) {
+  protected void initTelephonyCallback(Object callback) {
     if (VERSION.SDK_INT < S) {
       return;
     }
@@ -898,6 +919,7 @@ public class ShadowTelephonyManager {
    */
   @Implementation(minSdk = O)
   protected TelephonyManager createForPhoneAccountHandle(PhoneAccountHandle handle) {
+    checkReadPhoneStatePermission();
     return phoneAccountToTelephonyManagers.get(handle);
   }
 
@@ -1075,6 +1097,9 @@ public class ShadowTelephonyManager {
    */
   @Implementation(minSdk = Build.VERSION_CODES.Q)
   protected boolean isEmergencyNumber(String number) {
+    if (ShadowServiceManager.getService(Context.TELEPHONY_SERVICE) == null) {
+      throw new IllegalStateException("telephony service is null.");
+    }
 
     if (number == null) {
       return false;
