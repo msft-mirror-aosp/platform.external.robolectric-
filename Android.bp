@@ -145,6 +145,7 @@ java_library_host {
         "Robolectric_junit_upstream",
         "Robolectric_utils_upstream",
         "Robolectric_utils_reflector_upstream",
+        "Robolectric_nativeruntime_upstream",
         "asm-9.2",
         "junit",
         "asm-tree-9.2",
@@ -169,9 +170,7 @@ java_library_host {
 java_host_for_device {
     name: "Robolectric_all-target_upstream",
     libs: ["Robolectric_all_upstream"],
-    visibility: [
-        "//platform_testing/robolab/roboStandaloneProj/tests",
-    ],
+    visibility: ["//visibility:public"],
 }
 
 // Make dependencies available as host jars
