@@ -1,8 +1,13 @@
 package org.robolectric.internal.dependency;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
+import org.robolectric.util.Logger;
 
 public class LocalDependencyResolver implements DependencyResolver {
   private File offlineJarDir;
@@ -39,6 +44,12 @@ public class LocalDependencyResolver implements DependencyResolver {
    */
   private static File validateFile(File file) throws IllegalArgumentException {
     if (!file.isFile()) {
+      Logger.error("Directory contents: "+ file.getParentFile());
+      try (Stream<Path> stream = Files.list(file.getParentFile().toPath())) {
+        stream.forEach(s -> Logger.error(s.toString()));
+      } catch (IOException ioe) {
+        Logger.error("Not a directory " + file.getParentFile());
+      }
       throw new IllegalArgumentException("Path is not a file: " + file);
     }
     if (!file.canRead()) {

@@ -6,6 +6,8 @@ import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 
 import android.os.Build.VERSION;
 import android.telephony.SubscriptionInfo;
@@ -32,10 +34,19 @@ public class ShadowSubscriptionManager {
   public static final int INVALID_PHONE_INDEX =
       ReflectionHelpers.getStaticField(SubscriptionManager.class, "INVALID_PHONE_INDEX");
 
+  private static int activeDataSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
   private static int defaultSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
   private static int defaultDataSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
   private static int defaultSmsSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
   private static int defaultVoiceSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+
+  private final Map<Integer, String> phoneNumberMap = new HashMap<>();
+
+  /** Returns value set with {@link #setActiveDataSubscriptionId(int)}. */
+  @Implementation(minSdk = R)
+  protected static int getActiveDataSubscriptionId() {
+    return activeDataSubscriptionId;
+  }
 
   /** Returns value set with {@link #setDefaultSubscriptionId(int)}. */
   @Implementation(minSdk = N)
@@ -85,6 +96,11 @@ public class ShadowSubscriptionManager {
     return defaultDataSubscriptionId;
   }
 
+  /** Sets the value that will be returned by {@link #getActiveDataSubscriptionId()}. */
+  public static void setActiveDataSubscriptionId(int activeDataSubscriptionId) {
+    ShadowSubscriptionManager.activeDataSubscriptionId = activeDataSubscriptionId;
+  }
+
   /** Sets the value that will be returned by {@link #getDefaultSubscriptionId()}. */
   public static void setDefaultSubscriptionId(int defaultSubscriptionId) {
     ShadowSubscriptionManager.defaultSubscriptionId = defaultSubscriptionId;
@@ -109,8 +125,8 @@ public class ShadowSubscriptionManager {
   private static Map<Integer, Integer> phoneIds = new HashMap<>();
 
   /**
-   * Cache of {@link SubscriptionInfo} used by {@link #getActiveSubscriptionInfoList}.
-   * Managed by {@link #setActiveSubscriptionInfoList}.
+   * Cache of {@link SubscriptionInfo} used by {@link #getActiveSubscriptionInfoList}. Managed by
+   * {@link #setActiveSubscriptionInfoList}.
    */
   private List<SubscriptionInfo> subscriptionList = new ArrayList<>();
   /**
@@ -212,6 +228,7 @@ public class ShadowSubscriptionManager {
   /**
    * Sets the active list of {@link SubscriptionInfo}. This call internally triggers {@link
    * OnSubscriptionsChangedListener#onSubscriptionsChanged()} to all the listeners.
+   *
    * @param list - The subscription info list, can be null.
    */
   public void setActiveSubscriptionInfoList(List<SubscriptionInfo> list) {
@@ -299,7 +316,7 @@ public class ShadowSubscriptionManager {
   }
 
   /** Clears the local cache of roaming subscription Ids used by {@link #isNetworkRoaming}. */
-  public void clearNetworkRoamingStatus(){
+  public void clearNetworkRoamingStatus() {
     roamingSimSubscriptionIds.clear();
   }
 
@@ -377,8 +394,25 @@ public class ShadowSubscriptionManager {
     }
   }
 
+  /**
+   * Returns the phone number for the given {@code subscriptionId}, or an empty string if not
+   * available.
+   *
+   * <p>The phone number can be set by {@link #setPhoneNumber(int, String)}
+   */
+  @Implementation(minSdk = TIRAMISU)
+  protected String getPhoneNumber(int subscriptionId) {
+    return phoneNumberMap.getOrDefault(subscriptionId, "");
+  }
+
+  /** Sets the phone number returned by {@link #getPhoneNumber(int)}. */
+  public void setPhoneNumber(int subscriptionId, String phoneNumber) {
+    phoneNumberMap.put(subscriptionId, phoneNumber);
+  }
+
   @Resetter
   public static void reset() {
+    activeDataSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     defaultDataSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     defaultSmsSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     defaultVoiceSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;

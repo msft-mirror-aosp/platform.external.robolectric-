@@ -2,6 +2,7 @@ package org.robolectric.android.internal;
 
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.O;
 import static org.robolectric.shadow.api.Shadow.newInstanceOf;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -48,6 +49,8 @@ import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.GraphicsMode.Mode;
 import org.robolectric.annotation.experimental.LazyApplication.LazyLoad;
 import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.internal.ResourcesMode;
@@ -83,6 +86,7 @@ import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
 import org.robolectric.shadows.ShadowPackageParser._Package_;
+import org.robolectric.util.Logger;
 import org.robolectric.util.PerfStatsCollector;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.Scheduler;
@@ -144,11 +148,14 @@ public class AndroidTestEnvironment implements TestEnvironment {
       ShadowLegacyLooper.internalInitializeBackgroundThreadScheduler();
     }
 
+    exportNativeruntimeProperties();
+
     if (!loggingInitialized) {
       ShadowLog.setupLogging();
       loggingInitialized = true;
     }
 
+    Logger.debug("Robolectric Test Configuration: " + configuration.map());
     ConscryptMode.Mode conscryptMode = configuration.get(ConscryptMode.Mode.class);
     Security.removeProvider(CONSCRYPT_PROVIDER);
     if (conscryptMode != ConscryptMode.Mode.OFF) {
@@ -707,5 +714,12 @@ public class AndroidTestEnvironment implements TestEnvironment {
       return buffer.toString();
     }
     return receiverClassName;
+  }
+
+  private static void exportNativeruntimeProperties() {
+    GraphicsMode.Mode graphicsMode = ConfigurationRegistry.get(GraphicsMode.Mode.class);
+    System.setProperty(
+        "robolectric.nativeruntime.enableGraphics",
+        Boolean.toString(graphicsMode == Mode.NATIVE && RuntimeEnvironment.getApiLevel() >= O));
   }
 }
