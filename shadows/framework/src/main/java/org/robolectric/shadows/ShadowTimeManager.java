@@ -31,6 +31,7 @@ public class ShadowTimeManager {
   private TimeZoneCapabilities timeZoneCapabilities =
       new TimeZoneCapabilities.Builder(UserHandle.CURRENT)
           .setConfigureAutoDetectionEnabledCapability(Capabilities.CAPABILITY_POSSESSED)
+          .setUseLocationEnabled(true)
           .setConfigureGeoDetectionEnabledCapability(Capabilities.CAPABILITY_POSSESSED)
           .setSetManualTimeZoneCapability(Capabilities.CAPABILITY_POSSESSED)
           .build();
