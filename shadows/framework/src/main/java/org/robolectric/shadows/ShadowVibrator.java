@@ -6,39 +6,43 @@ import android.media.AudioAttributes;
 import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.os.vibrator.PrimitiveSegment;
 import android.os.vibrator.VibrationEffectSegment;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
+import org.robolectric.annotation.Resetter;
+import org.robolectric.util.ReflectionHelpers;
 
 @Implements(Vibrator.class)
 public class ShadowVibrator {
-  boolean vibrating;
-  boolean cancelled;
-  long milliseconds;
-  protected long[] pattern;
-  protected final List<VibrationEffectSegment> vibrationEffectSegments = new ArrayList<>();
-  protected final List<PrimitiveEffect> primitiveEffects = new ArrayList<>();
-  protected final List<Integer> supportedPrimitives = new ArrayList<>();
-  @Nullable protected VibrationAttributes vibrationAttributesFromLastVibration;
-  @Nullable protected AudioAttributes audioAttributesFromLastVibration;
-  int repeat;
-  boolean hasVibrator = true;
-  boolean hasAmplitudeControl = false;
-  int effectId;
+  static boolean vibrating;
+  static boolean cancelled;
+  static long milliseconds;
+  protected static long[] pattern;
+  protected static final List<VibrationEffectSegment> vibrationEffectSegments = new ArrayList<>();
+  protected static final List<PrimitiveEffect> primitiveEffects = new ArrayList<>();
+  protected static final List<Integer> supportedPrimitives = new ArrayList<>();
+  @Nullable protected static VibrationAttributes vibrationAttributesFromLastVibration;
+  @Nullable protected static AudioAttributes audioAttributesFromLastVibration;
+  static int repeat;
+  static boolean hasVibrator = true;
+  static boolean hasAmplitudeControl = false;
+  static int effectId;
 
   /** Controls the return value of {@link Vibrator#hasVibrator()} the default is true. */
   public void setHasVibrator(boolean hasVibrator) {
-    this.hasVibrator = hasVibrator;
+    ShadowVibrator.hasVibrator = hasVibrator;
   }
 
   /** Controls the return value of {@link Vibrator#hasAmplitudeControl()} the default is false. */
   public void setHasAmplitudeControl(boolean hasAmplitudeControl) {
-    this.hasAmplitudeControl = hasAmplitudeControl;
+    ShadowVibrator.hasAmplitudeControl = hasAmplitudeControl;
   }
 
   /**
@@ -85,6 +89,20 @@ public class ShadowVibrator {
     return vibrationEffectSegments;
   }
 
+  /** Returns the last list of {@link PrimitiveSegment} vibrations in {@link PrimitiveEffect}. */
+  @SuppressWarnings("JdkCollectors") // toImmutableList is only supported in Java 8+.
+  public List<PrimitiveEffect> getPrimitiveSegmentsInPrimitiveEffects() {
+    return vibrationEffectSegments.stream()
+        .filter(segment -> segment instanceof PrimitiveSegment)
+        .map(
+            segment ->
+                new PrimitiveEffect(
+                    ReflectionHelpers.getField(segment, "mPrimitiveId"),
+                    ReflectionHelpers.getField(segment, "mScale"),
+                    ReflectionHelpers.getField(segment, "mDelay")))
+        .collect(Collectors.toList());
+  }
+
   /** Returns the last list of {@link PrimitiveEffect}. */
   @Nullable
   public List<PrimitiveEffect> getPrimitiveEffects() {
@@ -117,6 +135,23 @@ public class ShadowVibrator {
   @Nullable
   public AudioAttributes getAudioAttributesFromLastVibration() {
     return audioAttributesFromLastVibration;
+  }
+
+  @Resetter
+  public static void reset() {
+    vibrating = false;
+    cancelled = false;
+    milliseconds = 0;
+    pattern = null;
+    vibrationEffectSegments.clear();
+    primitiveEffects.clear();
+    supportedPrimitives.clear();
+    vibrationAttributesFromLastVibration = null;
+    audioAttributesFromLastVibration = null;
+    repeat = 0;
+    hasVibrator = true;
+    hasAmplitudeControl = false;
+    effectId = 0;
   }
 
   /**
