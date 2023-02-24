@@ -1,5 +1,8 @@
 package org.robolectric.shadows;
 
+import static android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_HOME;
+import static android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS;
+import static android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
 import static android.os.Build.VERSION_CODES.LOLLIPOP;
@@ -86,6 +89,7 @@ public class ShadowDevicePolicyManager {
   private Map<String, Bundle> applicationRestrictionsMap = new HashMap<>();
   private CharSequence organizationName;
   private int organizationColor;
+  private boolean isAutoTimeEnabled;
   private boolean isAutoTimeRequired;
   private boolean isAutoTimeZoneEnabled;
   private String timeZone;
@@ -128,6 +132,7 @@ public class ShadowDevicePolicyManager {
   private final Map<ComponentName, CharSequence> longSupportMessageMap = new HashMap<>();
   private final Set<ComponentName> componentsWithActivatedTokens = new HashSet<>();
   private Collection<String> packagesToFailForSetApplicationHidden = Collections.emptySet();
+  private int lockTaskFeatures;
   private final List<String> lockTaskPackages = new ArrayList<>();
   private Context context;
   private ApplicationPackageManager applicationPackageManager;
@@ -596,6 +601,18 @@ public class ShadowDevicePolicyManager {
   protected int getOrganizationColor(ComponentName admin) {
     enforceProfileOwner(admin);
     return organizationColor;
+  }
+
+  @Implementation(minSdk = R)
+  protected void setAutoTimeEnabled(ComponentName admin, boolean enabled) {
+    enforceDeviceOwnerOrProfileOwner(admin);
+    isAutoTimeEnabled = enabled;
+  }
+
+  @Implementation(minSdk = R)
+  protected boolean getAutoTimeEnabled(ComponentName admin) {
+    enforceDeviceOwnerOrProfileOwner(admin);
+    return isAutoTimeEnabled;
   }
 
   @Implementation(minSdk = LOLLIPOP)
@@ -1234,6 +1251,31 @@ public class ShadowDevicePolicyManager {
     enforceActiveAdmin(admin);
     Set<Integer> policyGrantedSet = adminPolicyGrantedMap.get(admin);
     return policyGrantedSet != null && policyGrantedSet.contains(usesPolicy);
+  }
+
+  @Implementation(minSdk = P)
+  protected int getLockTaskFeatures(ComponentName admin) {
+    Objects.requireNonNull(admin, "ComponentName is null");
+    enforceDeviceOwnerOrProfileOwner(admin);
+    return lockTaskFeatures;
+  }
+
+  @Implementation(minSdk = P)
+  protected void setLockTaskFeatures(ComponentName admin, int flags) {
+    Objects.requireNonNull(admin, "ComponentName is null");
+    enforceDeviceOwnerOrProfileOwner(admin);
+    // Throw if Overview is used without Home.
+    boolean hasHome = (flags & LOCK_TASK_FEATURE_HOME) != 0;
+    boolean hasOverview = (flags & LOCK_TASK_FEATURE_OVERVIEW) != 0;
+    Preconditions.checkArgument(
+        hasHome || !hasOverview,
+        "Cannot use LOCK_TASK_FEATURE_OVERVIEW without LOCK_TASK_FEATURE_HOME");
+    boolean hasNotification = (flags & LOCK_TASK_FEATURE_NOTIFICATIONS) != 0;
+    Preconditions.checkArgument(
+        hasHome || !hasNotification,
+        "Cannot use LOCK_TASK_FEATURE_NOTIFICATIONS without LOCK_TASK_FEATURE_HOME");
+
+    lockTaskFeatures = flags;
   }
 
   @Implementation(minSdk = LOLLIPOP)
