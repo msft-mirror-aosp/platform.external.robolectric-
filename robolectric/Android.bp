@@ -40,6 +40,7 @@ java_library_host {
     ],
     srcs: ["src/main/java/**/*.java"],
     plugins: ["auto_service_plugin"],
+    java_resource_dirs: ["src/main/resources"],
     java_resources: [":robolectric-version-upstream.properties"],
 }
 
