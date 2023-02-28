@@ -195,6 +195,8 @@ java_host_for_device {
       "//packages/services/Mms/tests/robotests:__pkg__",
       "//packages/apps/QuickAccessWallet/tests/robolectric:__pkg__",
       "//packages/apps/ManagedProvisioning/tests/robotests:__pkg__",
+      "//packages/apps/Car/libs/car-media-common/tests/robotests",
+      "//packages/apps/Car/libs/car-ui-lib",
       "//packages/apps/Car/Notification/tests/robotests:__pkg__",
       "//packages/apps/Car/Cluster/DirectRenderingCluster/tests/robotests:__pkg__",
       "//packages/apps/Car/Settings/tests/robotests:__pkg__",
