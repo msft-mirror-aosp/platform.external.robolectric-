@@ -221,7 +221,9 @@ public class ShadowNfcAdapter {
     }
     if (RuntimeEnvironment.getApiLevel() >= Build.VERSION_CODES.Q) {
       nfcAdapterReflector.setHasNfcFeature(false);
-      nfcAdapterReflector.setHasBeamFeature(false);
+      if (RuntimeEnvironment.getApiLevel() < VERSION_CODES.CUR_DEVELOPMENT) {
+        nfcAdapterReflector.setHasBeamFeature(false);
+      }
     }
   }
 
