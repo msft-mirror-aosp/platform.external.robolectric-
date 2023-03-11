@@ -356,7 +356,8 @@ public class ClassInstrumentor {
    *
    * @param method the constructor to instrument
    */
-  private void instrumentConstructor(MutableClass mutableClass, MethodNode method) {
+  protected void instrumentConstructor(MutableClass mutableClass, MethodNode method) {
+    int methodAccess = method.access;
     makeMethodPrivate(method);
 
     InsnList callSuper = extractCallToSuperConstructor(mutableClass, method);
@@ -366,8 +367,7 @@ public class ClassInstrumentor {
 
     String[] exceptions = exceptionArray(method);
     MethodNode initMethodNode =
-        new MethodNode(method.access, "<init>", method.desc, method.signature, exceptions);
-    makeMethodPublic(initMethodNode);
+        new MethodNode(methodAccess, "<init>", method.desc, method.signature, exceptions);
     RobolectricGeneratorAdapter generator = new RobolectricGeneratorAdapter(initMethodNode);
     initMethodNode.instructions.add(callSuper);
     generator.loadThis();
@@ -658,12 +658,6 @@ public class ClassInstrumentor {
   private static void makeClassPublic(ClassNode clazz) {
     clazz.access =
         (clazz.access | Opcodes.ACC_PUBLIC) & ~(Opcodes.ACC_PROTECTED | Opcodes.ACC_PRIVATE);
-  }
-
-  /** Replaces protected and private method modifiers with public. */
-  protected void makeMethodPublic(MethodNode method) {
-    method.access =
-        (method.access | Opcodes.ACC_PUBLIC) & ~(Opcodes.ACC_PROTECTED | Opcodes.ACC_PRIVATE);
   }
 
   /** Replaces protected and public class modifiers with private. */
