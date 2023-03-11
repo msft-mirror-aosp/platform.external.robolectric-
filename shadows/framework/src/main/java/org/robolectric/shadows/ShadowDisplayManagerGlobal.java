@@ -21,6 +21,7 @@ import com.google.common.annotations.VisibleForTesting;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import javax.annotation.Nullable;
 import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.HiddenApi;
@@ -81,7 +82,7 @@ public class ShadowDisplayManagerGlobal {
         reflector(DisplayManagerGlobalReflector.class, instance);
     displayManagerGlobal.setDm(displayManager);
     displayManagerGlobal.setLock(new Object());
-    displayManagerGlobal.setDisplayListeners(new ArrayList<>());
+    displayManagerGlobal.setDisplayListeners(new CopyOnWriteArrayList<>());
     displayManagerGlobal.setDisplayInfoCache(new SparseArray<>());
     return instance;
   }
@@ -264,7 +265,7 @@ public class ShadowDisplayManagerGlobal {
     void setLock(Object lock);
 
     @Accessor("mDisplayListeners")
-    void setDisplayListeners(ArrayList<Handler> list);
+    void setDisplayListeners(CopyOnWriteArrayList<Handler> list);
 
     @Accessor("mDisplayInfoCache")
     void setDisplayInfoCache(SparseArray<DisplayInfo> displayInfoCache);
