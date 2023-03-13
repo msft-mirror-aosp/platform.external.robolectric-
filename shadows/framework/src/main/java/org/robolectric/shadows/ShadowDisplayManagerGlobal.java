@@ -1,5 +1,6 @@
 package org.robolectric.shadows;
 
+import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.annotation.Nullable;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
@@ -82,7 +84,11 @@ public class ShadowDisplayManagerGlobal {
         reflector(DisplayManagerGlobalReflector.class, instance);
     displayManagerGlobal.setDm(displayManager);
     displayManagerGlobal.setLock(new Object());
-    displayManagerGlobal.setDisplayListeners(new CopyOnWriteArrayList<>());
+    List<Handler> displayListeners =
+        RuntimeEnvironment.getApiLevel() < CUR_DEVELOPMENT
+            ? new ArrayList<>()
+            : new CopyOnWriteArrayList<>();
+    displayManagerGlobal.setDisplayListeners(displayListeners);
     displayManagerGlobal.setDisplayInfoCache(new SparseArray<>());
     return instance;
   }
@@ -265,7 +271,7 @@ public class ShadowDisplayManagerGlobal {
     void setLock(Object lock);
 
     @Accessor("mDisplayListeners")
-    void setDisplayListeners(CopyOnWriteArrayList<Handler> list);
+    void setDisplayListeners(List<Handler> list);
 
     @Accessor("mDisplayInfoCache")
     void setDisplayInfoCache(SparseArray<DisplayInfo> displayInfoCache);
