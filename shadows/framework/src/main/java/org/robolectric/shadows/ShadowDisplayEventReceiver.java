@@ -18,6 +18,7 @@ import android.os.MessageQueue;
 import android.os.SystemClock;
 import android.view.Choreographer;
 import android.view.DisplayEventReceiver;
+import android.view.DisplayEventReceiver.VsyncEventData;
 import dalvik.system.CloseGuard;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
@@ -99,6 +100,7 @@ public class ShadowDisplayEventReceiver {
   @Implementation(minSdk = CUR_DEVELOPMENT)
   protected static long nativeInit(
       WeakReference<DisplayEventReceiver> receiver,
+      WeakReference<VsyncEventData> vsyncEventData, /* >= U */
       MessageQueue msgQueue,
       int vsyncSource,
       int eventRegistration,
