@@ -237,7 +237,9 @@ public class LoadedArsc {
     // Make sure that there is enough room for the entry offsets.
     int offsets_offset = dtohs(header.header.headerSize);
     int entries_offset = dtohl(header.entriesStart);
-    int offsets_length = 4 * entry_count;
+    int offsets_length = isTruthy(header.flags & ResTable_type.FLAG_OFFSET16)
+                                    ? 2 * entry_count
+                                    : 4 * entry_count;
 
     if (offsets_offset > entries_offset || entries_offset - offsets_offset < offsets_length) {
       logError("RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data.");
@@ -284,7 +286,7 @@ public class LoadedArsc {
     //       reinterpret_cast<uint8_t*>(type) + entry_offset);
     ResTable_entry entry = new ResTable_entry(type.myBuf(), type.myOffset() + entry_offset);
 
-    int entry_size = dtohs(entry.size);
+    int entry_size = entry.isCompact() ? 8 : dtohs(entry.size);
     // if (entry_size < sizeof(*entry)) {
     if (entry_size < ResTable_entry.SIZEOF) {
       logError("ResTable_entry size " + entry_size + " at offset " + entry_offset
@@ -298,6 +300,10 @@ public class LoadedArsc {
       return false;
     }
 
+    if (entry.isCompact()) {
+      return true;
+    }
+
     if (entry_size < ResTable_map_entry.BASE_SIZEOF) {
       // There needs to be room for one Res_value struct.
       if (entry_offset + entry_size > chunk_size - Res_value.SIZEOF) {
@@ -308,8 +314,7 @@ public class LoadedArsc {
 
       // Res_value value =
       //       reinterpret_cast<Res_value*>(reinterpret_cast<uint8_t*>(entry) + entry_size);
-      Res_value value =
-          new Res_value(entry.myBuf(), entry.myOffset() + ResTable_entry.SIZEOF);
+      Res_value value = entry.getResValue();
       int value_size = dtohs(value.size);
       if (value_size < Res_value.SIZEOF) {
         logError("Res_value at offset " + entry_offset + " is too small.");
@@ -531,7 +536,7 @@ public class LoadedArsc {
             ResTable_entry entry =
                 new ResTable_entry(type.myBuf(), type.myOffset() +
                     dtohl(type.entriesStart) + offset);
-            if (dtohl(entry.key.index) == key_idx) {
+            if (dtohl(entry.getKeyIndex()) == key_idx) {
               // The package ID will be overridden by the caller (due to runtime assignment of package
               // IDs for shared libraries).
               return make_resid((byte) 0x00, (byte) (type_idx + type_id_offset_ + 1), (short) entry_idx);
