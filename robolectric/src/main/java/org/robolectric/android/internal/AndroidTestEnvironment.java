@@ -705,8 +705,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      String receiverClassName = replaceLastDotWith$IfInnerStaticClass(receiver.getName());
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiver.getName()), filter);
     }
   }
 
