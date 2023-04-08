@@ -229,6 +229,10 @@ public class ClassInstrumentor {
       if ((node instanceof LdcInsnNode && ((LdcInsnNode) node).cst instanceof ConstantDynamic)) {
         ConstantDynamic cst = (ConstantDynamic) ((LdcInsnNode) node).cst;
         return cst.getName().equals("$jacocoData");
+      } else if (insns.length > 1
+          && insns[0] instanceof LabelNode
+          && insns[1] instanceof MethodInsnNode) {
+        return "$jacocoInit".equals(((MethodInsnNode) insns[1]).name);
       }
     }
     return false;
