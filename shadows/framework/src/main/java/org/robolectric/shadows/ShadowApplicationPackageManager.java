@@ -69,7 +69,6 @@ import android.content.pm.ModuleInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageItemInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.ApplicationInfoFlags;
 import android.content.pm.PackageManager.ComponentEnabledSetting;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.PackageManager.OnPermissionsChangedListener;
@@ -100,6 +99,7 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 import android.util.Pair;
 import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import java.io.File;
@@ -1035,7 +1035,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @Implementation(minSdk = TIRAMISU)
   protected List<ApplicationInfo> getInstalledApplications(Object flags) {
-    return getInstalledApplications(((ApplicationInfoFlags) flags).getValue());
+    return getInstalledApplications(((PackageManager.ApplicationInfoFlags) flags).getValue());
   }
 
   private List<ApplicationInfo> getInstalledApplications(long flags) {
@@ -1426,6 +1426,14 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     }
     // Maybe query app infos from overridden resolveInfo as well?
     return packageInfo.applicationInfo;
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected ApplicationInfo getApplicationInfo(Object packageName, Object flagsObject)
+      throws NameNotFoundException {
+    Preconditions.checkArgument(flagsObject instanceof PackageManager.ApplicationInfoFlags);
+    PackageManager.ApplicationInfoFlags flags = (PackageManager.ApplicationInfoFlags) flagsObject;
+    return getApplicationInfo((String) packageName, (int) (flags).getValue());
   }
 
   private void applyFlagsToApplicationInfo(@Nullable ApplicationInfo appInfo, long flags)
