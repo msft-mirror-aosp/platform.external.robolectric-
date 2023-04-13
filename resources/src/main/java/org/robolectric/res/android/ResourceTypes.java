@@ -161,6 +161,7 @@ public class ResourceTypes {
   public static final int RES_TABLE_TYPE_TYPE         = 0x0201;
   public static final int RES_TABLE_TYPE_SPEC_TYPE    = 0x0202;
   public static final int RES_TABLE_LIBRARY_TYPE      = 0x0203;
+  public static final int RES_TABLE_STAGED_ALIAS_TYPE = 0x0206;
 
   /**
    * Macros for building/splitting resource identifiers.
@@ -1218,6 +1219,7 @@ public static class ResTable_ref
         if (off16 == -1) {
           return -1;
         }
+        // Check for no entry (0xffff short)
         return dtohs(off16) == 0xffff ? ResTable_type.NO_ENTRY : dtohs(off16) * 4;
       } else {
         return byteBuffer.getInt(offset + header.headerSize + entryIndex * 4);
@@ -1296,7 +1298,6 @@ public static class ResTable_ref
     // Number of bytes in this structure.
     short size;
 
-    //enum {
     // If set, this is a complex entry, holding a set of name/value
     // mappings.  It is followed by an array of ResTable_map structures.
     public static final int FLAG_COMPLEX = 0x0001;
@@ -1307,9 +1308,10 @@ public static class ResTable_ref
     // resources of the same name/type. This is only useful during
     // linking with other resource tables.
     public static final int FLAG_WEAK = 0x0004;
-
+    // If set, this is a compact entry with data type and value directly
+    // encoded in the this entry, see ResTable_entry::compact
     public static final int FLAG_COMPACT = 0x0008;
-    //    };
+
     final short flags;
 
     // Reference into ResTable_package::keyStrings identifying this entry.
@@ -1332,16 +1334,16 @@ public static class ResTable_ref
       }
     }
 
-    public boolean isCompact() {
-      return (flags & FLAG_COMPACT) == FLAG_COMPACT;
-    }
-
     public int getKeyIndex() {
       if (isCompact()) {
         return dtohs(compactKey);
       } else {
         return key.index;
       }
+    }
+
+    public boolean isCompact() {
+      return (flags & FLAG_COMPACT) == FLAG_COMPACT;
     }
 
     public Res_value getResValue() {
@@ -1351,10 +1353,10 @@ public static class ResTable_ref
       //     reinterpret_cast<final byte*>(entry) + dtohs(entry.size));
 
       if (isCompact()) {
-        byte type = (byte)(dtohs(flags) >> 8);
+        byte type = (byte) (dtohs(flags) >> 8);
         return new Res_value((byte)(dtohs(flags) >> 8), compactData);
       } else {
-       return new Res_value(myBuf(), myOffset() + dtohs(size));
+        return new Res_value(myBuf(), myOffset() + dtohs(size));
       }
     }
   }
@@ -1543,6 +1545,44 @@ public static class ResTable_ref
       }
     }
   };
+
+  /**
+   * A map that allows rewriting staged (non-finalized) resource ids to their finalized
+   * counterparts.
+   */
+  static class ResTableStagedAliasHeader extends WithOffset {
+    public static final int SIZEOF = ResChunk_header.SIZEOF + 4;
+
+    ResChunk_header header;
+
+    // The number of ResTableStagedAliasEntry that follow this header.
+    int count;
+
+    ResTableStagedAliasHeader(ByteBuffer buf, int offset) {
+      super(buf, offset);
+
+      header = new ResChunk_header(buf, offset);
+      count = buf.getInt(offset + ResChunk_header.SIZEOF);
+    }
+  }
+
+  /** Maps the staged (non-finalized) resource id to its finalized resource id. */
+  static class ResTableStagedAliasEntry extends WithOffset {
+    public static final int SIZEOF = 8;
+
+    // The compile-time staged resource id to rewrite.
+    int stagedResId;
+
+    // The compile-time finalized resource id to which the staged resource id should be rewritten.
+    int finalizedResId;
+
+    ResTableStagedAliasEntry(ByteBuffer buf, int offset) {
+      super(buf, offset);
+
+      stagedResId = buf.getInt(offset);
+      finalizedResId = buf.getInt(offset + 4);
+    }
+  }
 
   // struct alignas(uint32_t) Idmap_header {
   static class Idmap_header extends WithOffset {
