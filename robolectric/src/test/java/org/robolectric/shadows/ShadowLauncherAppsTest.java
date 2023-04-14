@@ -520,7 +520,7 @@ public class ShadowLauncherAppsTest {
     info.name = packageName;
     info.nonLocalizedLabel = packageName;
     LauncherActivityInfoInternal launcherActivityInfoInternal =
-            new LauncherActivityInfoInternal(info, null);
+            new LauncherActivityInfoInternal(info, null, user);
 
     return ReflectionHelpers.callConstructor(
             LauncherActivityInfo.class,
