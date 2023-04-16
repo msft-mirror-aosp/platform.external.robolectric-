@@ -176,6 +176,8 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     Bootstrap.applyQualifiers(config.qualifiers(), apiLevel, androidConfiguration, displayMetrics);
 
+    androidConfiguration.fontScale = config.fontScale();
+
     if (Boolean.getBoolean("robolectric.nativeruntime.enableGraphics")) {
       Bitmap.setDefaultDensity(displayMetrics.densityDpi);
     }
@@ -697,8 +699,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      String receiverClassName = replaceLastDotWith$IfInnerStaticClass(receiver.getName());
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiver.getName()), filter);
     }
   }
 
