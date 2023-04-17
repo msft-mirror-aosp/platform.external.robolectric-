@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.KITKAT;
@@ -13,12 +12,12 @@ import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 
 import android.os.MessageQueue;
 import android.os.SystemClock;
 import android.view.Choreographer;
 import android.view.DisplayEventReceiver;
-import android.view.DisplayEventReceiver.VsyncEventData;
 import dalvik.system.CloseGuard;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
@@ -97,10 +96,10 @@ public class ShadowDisplayEventReceiver {
     return nativeInit(receiver, msgQueue);
   }
 
-  @Implementation(minSdk = CUR_DEVELOPMENT)
+  @Implementation(minSdk = UPSIDE_DOWN_CAKE)
   protected static long nativeInit(
       WeakReference<DisplayEventReceiver> receiver,
-      WeakReference<VsyncEventData> vsyncEventData, /* >= U */
+      WeakReference<Object> vsyncEventData,
       MessageQueue msgQueue,
       int vsyncSource,
       int eventRegistration,
