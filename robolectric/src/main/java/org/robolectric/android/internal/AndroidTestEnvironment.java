@@ -2,6 +2,7 @@ package org.robolectric.android.internal;
 
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.O;
 import static org.robolectric.shadow.api.Shadow.newInstanceOf;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -48,6 +49,8 @@ import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.GraphicsMode.Mode;
 import org.robolectric.annotation.experimental.LazyApplication.LazyLoad;
 import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.internal.ResourcesMode;
@@ -83,7 +86,7 @@ import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
 import org.robolectric.shadows.ShadowPackageParser._Package_;
-import org.robolectric.util.Logger;
+import org.robolectric.shadows.ShadowView;
 import org.robolectric.util.PerfStatsCollector;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.Scheduler;
@@ -93,6 +96,8 @@ import org.robolectric.util.TempDirectory;
 public class AndroidTestEnvironment implements TestEnvironment {
 
   private static final String CONSCRYPT_PROVIDER = "Conscrypt";
+  private static final int MAX_DATA_DIR_NAME_LENGTH = 120;
+
   private final Sdk runtimeSdk;
   private final Sdk compileSdk;
 
@@ -145,12 +150,13 @@ public class AndroidTestEnvironment implements TestEnvironment {
       ShadowLegacyLooper.internalInitializeBackgroundThreadScheduler();
     }
 
+    exportNativeruntimeProperties();
+
     if (!loggingInitialized) {
       ShadowLog.setupLogging();
       loggingInitialized = true;
     }
 
-    Logger.debug("Robolectric Test Configuration: " + configuration.map());
     ConscryptMode.Mode conscryptMode = configuration.get(ConscryptMode.Mode.class);
     Security.removeProvider(CONSCRYPT_PROVIDER);
     if (conscryptMode != ConscryptMode.Mode.OFF) {
@@ -171,7 +177,9 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     Bootstrap.applyQualifiers(config.qualifiers(), apiLevel, androidConfiguration, displayMetrics);
 
-    if (Boolean.getBoolean("robolectric.nativeruntime.enableGraphics")) {
+    androidConfiguration.fontScale = config.fontScale();
+
+    if (ShadowView.useRealGraphics()) {
       Bitmap.setDefaultDensity(displayMetrics.densityDpi);
     }
     Locale locale =
@@ -194,7 +202,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     RuntimeEnvironment.setAndroidFrameworkJarPath(sdkJarPath);
     Bootstrap.setDisplayConfiguration(androidConfiguration, displayMetrics);
-    RuntimeEnvironment.setActivityThread(ReflectionHelpers.newInstance(ActivityThread.class));
+    RuntimeEnvironment.setActivityThread(ReflectionHelpers.callConstructor(ActivityThread.class));
     ReflectionHelpers.setStaticField(
         ActivityThread.class, "sMainThreadHandler", new Handler(Looper.myLooper()));
 
@@ -314,7 +322,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       } catch (ClassNotFoundException e) {
         throw new RuntimeException(e);
       }
-      final Object appBindData = ReflectionHelpers.newInstance(appBindDataClass);
+      final Object appBindData = ReflectionHelpers.callConstructor(appBindDataClass);
       final _AppBindData_ _appBindData_ = reflector(_AppBindData_.class, appBindData);
       _appBindData_.setProcessName(parsedPackage.packageName);
       _appBindData_.setAppInfo(applicationInfo);
@@ -577,9 +585,14 @@ public class AndroidTestEnvironment implements TestEnvironment {
   /** Create a file system safe directory path name for the current test. */
   @SuppressWarnings("DoNotCall")
   private String createTestDataDirRootPath(Method method) {
-    return method.getClass().getSimpleName()
-        + "_"
-        + method.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+    // Cap the size to 120 to avoid unnecessarily long directory names.
+    String directoryName =
+        (method.getDeclaringClass().getSimpleName() + "_" + method.getName())
+            .replaceAll("[^a-zA-Z0-9.-]", "_");
+    if (directoryName.length() > MAX_DATA_DIR_NAME_LENGTH) {
+      directoryName = directoryName.substring(0, MAX_DATA_DIR_NAME_LENGTH);
+    }
+    return directoryName;
   }
 
   @Override
@@ -692,8 +705,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      String receiverClassName = replaceLastDotWith$IfInnerStaticClass(receiver.getName());
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiver.getName()), filter);
     }
   }
 
@@ -709,5 +721,12 @@ public class AndroidTestEnvironment implements TestEnvironment {
       return buffer.toString();
     }
     return receiverClassName;
+  }
+
+  private static void exportNativeruntimeProperties() {
+    GraphicsMode.Mode graphicsMode = ConfigurationRegistry.get(GraphicsMode.Mode.class);
+    System.setProperty(
+        "robolectric.nativeruntime.enableGraphics",
+        Boolean.toString(graphicsMode == Mode.NATIVE && RuntimeEnvironment.getApiLevel() >= O));
   }
 }
