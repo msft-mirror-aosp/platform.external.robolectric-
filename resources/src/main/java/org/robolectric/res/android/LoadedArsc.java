@@ -5,6 +5,7 @@ import static org.robolectric.res.android.Errors.NO_INIT;
 import static org.robolectric.res.android.ResourceTypes.RES_STRING_POOL_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_LIBRARY_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_PACKAGE_TYPE;
+import static org.robolectric.res.android.ResourceTypes.RES_TABLE_STAGED_ALIAS_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_TYPE_SPEC_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_TYPE_TYPE;
@@ -19,6 +20,7 @@ import static org.robolectric.res.android.Util.logWarning;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -27,6 +29,8 @@ import org.robolectric.res.android.Chunk.Iterator;
 import org.robolectric.res.android.Idmap.LoadedIdmap;
 import org.robolectric.res.android.ResourceTypes.IdmapEntry_header;
 import org.robolectric.res.android.ResourceTypes.ResStringPool_header;
+import org.robolectric.res.android.ResourceTypes.ResTableStagedAliasEntry;
+import org.robolectric.res.android.ResourceTypes.ResTableStagedAliasHeader;
 import org.robolectric.res.android.ResourceTypes.ResTable_entry;
 import org.robolectric.res.android.ResourceTypes.ResTable_header;
 import org.robolectric.res.android.ResourceTypes.ResTable_lib_entry;
@@ -43,22 +47,25 @@ import org.robolectric.res.android.ResourceTypes.Res_value;
 // and https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r12/libs/androidfw/LoadedArsc.cpp
 public class LoadedArsc {
 
-  //#ifndef LOADEDARSC_H_
-//#define LOADEDARSC_H_
-//
-//#include <memory>
-//#include <set>
-//#include <vector>
-//
-//#include "android-base/macros.h"
-//
-//#include "androidfw/ByteBucketArray.h"
-//#include "androidfw/Chunk.h"
-//#include "androidfw/ResourceTypes.h"
-//#include "androidfw/Util.h"
-//
-//namespace android {
-//
+  // #ifndef LOADEDARSC_H_
+  // #define LOADEDARSC_H_
+  //
+  // #include <memory>
+  // #include <set>
+  // #include <vector>
+  //
+  // #include "android-base/macros.h"
+  //
+  // #include "androidfw/ByteBucketArray.h"
+  // #include "androidfw/Chunk.h"
+  // #include "androidfw/ResourceTypes.h"
+  // #include "androidfw/Util.h"
+  //
+  // namespace android {
+  //
+
+  private static final int kFrameworkPackageId = 0x01;
+
   static class DynamicPackageEntry {
 
     // public:
@@ -237,7 +244,9 @@ public class LoadedArsc {
     // Make sure that there is enough room for the entry offsets.
     int offsets_offset = dtohs(header.header.headerSize);
     int entries_offset = dtohl(header.entriesStart);
-    int offsets_length = 4 * entry_count;
+    int offsets_length = isTruthy(header.flags & ResTable_type.FLAG_OFFSET16)
+                                    ? 2 * entry_count
+                                    : 4 * entry_count;
 
     if (offsets_offset > entries_offset || entries_offset - offsets_offset < offsets_length) {
       logError("RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data.");
@@ -284,8 +293,7 @@ public class LoadedArsc {
     //       reinterpret_cast<uint8_t*>(type) + entry_offset);
     ResTable_entry entry = new ResTable_entry(type.myBuf(), type.myOffset() + entry_offset);
 
-    int entry_size = dtohs(entry.size);
-    // if (entry_size < sizeof(*entry)) {
+    int entry_size = entry.isCompact() ? ResTable_entry.SIZEOF : dtohs(entry.size);
     if (entry_size < ResTable_entry.SIZEOF) {
       logError("ResTable_entry size " + entry_size + " at offset " + entry_offset
           + " is too small.");
@@ -298,6 +306,11 @@ public class LoadedArsc {
       return false;
     }
 
+    // No further validations apply if the entry is compact.
+    if (entry.isCompact()) {
+      return true;
+    }
+
     if (entry_size < ResTable_map_entry.BASE_SIZEOF) {
       // There needs to be room for one Res_value struct.
       if (entry_offset + entry_size > chunk_size - Res_value.SIZEOF) {
@@ -308,8 +321,7 @@ public class LoadedArsc {
 
       // Res_value value =
       //       reinterpret_cast<Res_value*>(reinterpret_cast<uint8_t*>(entry) + entry_size);
-      Res_value value =
-          new Res_value(entry.myBuf(), entry.myOffset() + ResTable_entry.SIZEOF);
+      Res_value value = entry.getResValue();
       int value_size = dtohs(value.size);
       if (value_size < Res_value.SIZEOF) {
         logError("Res_value at offset " + entry_offset + " is too small.");
@@ -363,6 +375,7 @@ public class LoadedArsc {
     // };
     final Map<Integer, TypeSpec> type_specs_ = new HashMap<>();
     final List<DynamicPackageEntry> dynamic_package_map_ = new ArrayList<>();
+    final Map<Integer, Integer> aliasIdMap = new HashMap<>();
 
     ResTable_entry GetEntry(ResTable_type type_chunk,
         short entry_index) {
@@ -531,7 +544,7 @@ public class LoadedArsc {
             ResTable_entry entry =
                 new ResTable_entry(type.myBuf(), type.myOffset() +
                     dtohl(type.entriesStart) + offset);
-            if (dtohl(entry.key.index) == key_idx) {
+            if (dtohl(entry.getKeyIndex()) == key_idx) {
               // The package ID will be overridden by the caller (due to runtime assignment of package
               // IDs for shared libraries).
               return make_resid((byte) 0x00, (byte) (type_idx + type_id_offset_ + 1), (short) entry_idx);
@@ -749,6 +762,68 @@ public class LoadedArsc {
 
           } break;
 
+          case RES_TABLE_STAGED_ALIAS_TYPE:
+            {
+              if (loaded_package.package_id_ != kFrameworkPackageId) {
+                logWarning(
+                    String.format(
+                        "Alias chunk ignored for non-framework package '%s'",
+                        loaded_package.package_name_));
+                break;
+              }
+
+              ResTableStagedAliasHeader libAlias = child_chunk.asResTableStagedAliasHeader();
+              if (libAlias == null) {
+                logError("RES_TABLE_STAGED_ALIAS_TYPE is too small.");
+                return emptyBraces();
+              }
+              if ((child_chunk.data_size() / ResTableStagedAliasEntry.SIZEOF)
+                  < dtohl(libAlias.count)) {
+                logError("RES_TABLE_STAGED_ALIAS_TYPE is too small to hold entries.");
+                return emptyBraces();
+              }
+
+              // const auto entryBegin =
+              // child_chunk.data_ptr().convert<ResTableStagedAliasEntry>();
+              // const auto entry_end = entryBegin + dtohl(libAlias.count);
+              ResTableStagedAliasEntry entryBegin = child_chunk.asResTableStagedAliasEntry();
+              int entryEndOffset =
+                  entryBegin.myOffset()
+                      + dtohl(libAlias.count) * ResTableStagedAliasEntry.SIZEOF;
+              // std::unordered_set<uint32_t> finalizedIds;
+              // finalizedIds.reserve(entry_end - entryBegin);
+              Set<Integer> finalizedIds = new HashSet<>();
+              for (ResTableStagedAliasEntry entryIter = entryBegin;
+                  entryIter.myOffset() != entryEndOffset;
+                  entryIter =
+                      new ResTableStagedAliasEntry(
+                          entryIter.myBuf(),
+                          entryIter.myOffset() + ResTableStagedAliasEntry.SIZEOF)) {
+
+                int finalizedId = dtohl(entryIter.finalizedResId);
+                // if (!finalizedIds.insert(finalizedId).second) {
+                if (!finalizedIds.add(finalizedId)) {
+                  logError(
+                      String.format(
+                          "Repeated finalized resource id '%08x' in staged aliases.",
+                          finalizedId));
+                  return emptyBraces();
+                }
+
+                int stagedId = dtohl(entryIter.stagedResId);
+                // auto [_, success] = loaded_package->aliasIdMap.emplace(stagedId,
+                // finalizedId);
+                Integer previousValue = loaded_package.aliasIdMap.put(stagedId, finalizedId);
+                if (previousValue != null) {
+                  logError(
+                      String.format(
+                          "Repeated staged resource id '%08x' in staged aliases.", stagedId));
+                  return emptyBraces();
+                }
+              }
+            }
+            break;
+
           default:
             logWarning(String.format("Unknown chunk type '%02x'.", chunk.type()));
             break;
@@ -850,6 +925,10 @@ public class LoadedArsc {
           f.apply(ptr, (byte) (type_id - 1));
         }
       }
+    }
+
+    Map<Integer, Integer> getAliasResourceIdMap() {
+      return aliasIdMap;
     }
 
     private static LoadedPackage emptyBraces() {

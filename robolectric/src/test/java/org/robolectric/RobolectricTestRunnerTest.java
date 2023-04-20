@@ -160,14 +160,15 @@ public class RobolectricTestRunnerTest {
                     new TestEnvironmentSpec(AndroidTestEnvironmentWithFailingSetUp.class))
                 .build());
     runner.run(notifier);
-    assertThat(events).containsExactly(
-        "started: first",
-        "failure: fake error in setUpApplicationState",
-        "finished: first",
-        "started: second",
-        "failure: fake error in setUpApplicationState",
-        "finished: second"
-    ).inOrder();
+    assertThat(events)
+        .containsExactly(
+            "started: first",
+            "failure: ShadowActivityThread.reset: ActivityThread not set",
+            "finished: first",
+            "started: second",
+            "failure: ShadowActivityThread.reset: ActivityThread not set",
+            "finished: second")
+        .inOrder();
   }
 
   @Test
@@ -266,6 +267,24 @@ public class RobolectricTestRunnerTest {
   }
 
   @Test
+  public void failedTest_shouldStillReportPerfStats() throws Exception {
+    List<Metric> metrics = new ArrayList<>();
+    PerfStatsReporter reporter = (metadata, metrics1) -> metrics.addAll(metrics1);
+
+    RobolectricTestRunner runner =
+        new SingleSdkRobolectricTestRunner(
+            TestThatFails.class,
+            RobolectricTestRunner.defaultInjector()
+                .bind(PerfStatsReporter[].class, new PerfStatsReporter[] {reporter})
+                .build());
+
+    runner.run(notifier);
+
+    Set<String> metricNames = metrics.stream().map(Metric::getName).collect(toSet());
+    assertThat(metricNames).contains("initialization");
+  }
+
+  @Test
   public void shouldResetThreadInterrupted() throws Exception {
     RobolectricTestRunner runner = new SingleSdkRobolectricTestRunner(TestWithInterrupt.class);
     runner.run(notifier);
@@ -348,6 +367,15 @@ public class RobolectricTestRunnerTest {
 
     @Test
     public void second() throws Exception {
+    }
+  }
+
+  @Ignore
+  @FixMethodOrder(MethodSorters.NAME_ASCENDING)
+  public static class TestThatFails {
+    @Test
+    public void first() throws Exception {
+      throw new AssertionError();
     }
   }
 

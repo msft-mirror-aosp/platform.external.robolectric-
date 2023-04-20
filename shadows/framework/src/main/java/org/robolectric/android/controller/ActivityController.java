@@ -5,6 +5,7 @@ import static android.os.Build.VERSION_CODES.N_MR1;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.robolectric.shadow.api.Shadow.extract;
 import static org.robolectric.util.reflector.Reflector.reflector;
@@ -65,6 +66,9 @@ public class ActivityController<T extends Activity>
     STOPPED,
     DESTROYED
   }
+
+  // ActivityInfo constant.
+  private static final int CONFIG_WINDOW_CONFIGURATION = 0x20000000;
 
   private _Activity_ _component_;
   private LifecycleState currentState = LifecycleState.INITIAL;
@@ -147,8 +151,10 @@ public class ActivityController<T extends Activity>
         () -> {
           if (RuntimeEnvironment.getApiLevel() <= O_MR1) {
             _component_.performRestart();
-          } else {
+          } else if (RuntimeEnvironment.getApiLevel() <= TIRAMISU) {
             _component_.performRestart(true, "restart()");
+          } else {
+            _component_.performRestart(true);
           }
           currentState = LifecycleState.RESTARTED;
         });
@@ -425,11 +431,12 @@ public class ActivityController<T extends Activity>
       Configuration newConfiguration, DisplayMetrics newMetrics, @Config int changedConfig) {
     component.getResources().updateConfiguration(newConfiguration, newMetrics);
 
+    int filteredChanges = filterConfigChanges(changedConfig);
     // TODO: throw on changedConfig == 0 since it non-intuitively calls onConfigurationChanged
 
     // Can the activity handle itself ALL configuration changes?
-    if ((getActivityInfo(component.getApplication()).configChanges & changedConfig)
-        == changedConfig) {
+    if ((getActivityInfo(component.getApplication()).configChanges & filteredChanges)
+        == filteredChanges) {
       shadowMainLooper.runPaused(
           () -> {
             component.onConfigurationChanged(newConfiguration);
@@ -457,7 +464,7 @@ public class ActivityController<T extends Activity>
           () -> {
             // Set flags
             _component_.setChangingConfigurations(true);
-            _component_.setConfigChangeFlags(changedConfig);
+            _component_.setConfigChangeFlags(filteredChanges);
 
             // Perform activity destruction
             final Bundle outState = new Bundle();
@@ -586,6 +593,23 @@ public class ActivityController<T extends Activity>
       case STARTED:
         resume();
         // fall through
+      default:
+        // fall through
+    }
+
+    // Activity#mChangingConfigurations flag should be set prior to Activity recreation process
+    // starts. ActivityThread does set it on real device but here we simulate the Activity
+    // recreation process on behalf of ActivityThread so set the flag here. Note we don't need to
+    // reset the flag to false because this Activity instance is going to be destroyed and disposed.
+    // https://android.googlesource.com/platform/frameworks/base/+/55418eada51d4f5e6532ae9517af66c50
+    // ea495c4/core/java/android/app/ActivityThread.java#4806
+    _component_.setChangingConfigurations(true);
+
+    switch (originalState) {
+      case INITIAL:
+      case CREATED:
+      case RESTARTED:
+      case STARTED:
       case RESUMED:
         pause();
         // fall through
@@ -597,14 +621,6 @@ public class ActivityController<T extends Activity>
       default:
         throw new IllegalStateException("Cannot recreate activity since it's destroyed already");
     }
-
-    // Activity#mChangingConfigurations flag should be set prior to Activity recreation process
-    // starts. ActivityThread does set it on real device but here we simulate the Activity
-    // recreation process on behalf of ActivityThread so set the flag here. Note we don't need to
-    // reset the flag to false because this Activity instance is going to be destroyed and disposed.
-    // https://android.googlesource.com/platform/frameworks/base/+/55418eada51d4f5e6532ae9517af66c50
-    // ea495c4/core/java/android/app/ActivityThread.java#4806
-    _component_.setChangingConfigurations(true);
 
     Bundle outState = new Bundle();
     saveInstanceState(outState);
@@ -676,6 +692,16 @@ public class ActivityController<T extends Activity>
     }
 
     destroy();
+  }
+
+  // See ActivityRecord#getConfigurationChanges for the config changes that are considered for
+  // activity recreation by the window manager.
+  private static int filterConfigChanges(int changedConfig) {
+    // We don't want window configuration to cause relaunches.
+    if ((changedConfig & CONFIG_WINDOW_CONFIGURATION) != 0) {
+      changedConfig &= ~CONFIG_WINDOW_CONFIGURATION;
+    }
+    return changedConfig;
   }
 
   /** Accessor interface for android.app.Activity.NonConfigurationInstances's internals. */
