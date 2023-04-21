@@ -9,6 +9,8 @@ import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.N_MR1;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
 import static org.robolectric.Shadows.shadowOf;
@@ -194,13 +196,9 @@ public class ShadowUserManagerTest {
     shadowOf(userManager)
         .addProfile(
             0, PROFILE_USER_HANDLE, PROFILE_USER_NAME, ShadowUserManager.FLAG_MANAGED_PROFILE);
-
     assertThat(userManager.isManagedProfile()).isFalse();
 
-    Application application = ApplicationProvider.getApplicationContext();
-    ShadowContextImpl shadowContext = Shadow.extract(application.getBaseContext());
-    shadowContext.setUserId(PROFILE_USER_HANDLE);
-
+    setUserIdInContext(PROFILE_USER_HANDLE);
     assertThat(userManager.isManagedProfile()).isTrue();
   }
 
@@ -211,6 +209,35 @@ public class ShadowUserManagerTest {
     shadowOf(userManager)
         .addProfile(12, 13, "another managed profile", ShadowUserManager.FLAG_MANAGED_PROFILE);
     assertThat(userManager.isManagedProfile(13)).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void isCloneProfile_withSetter() {
+    shadowOf(userManager).setCloneProfile(false);
+    assertThat(userManager.isCloneProfile()).isFalse();
+
+    shadowOf(userManager).setCloneProfile(true);
+    assertThat(userManager.isCloneProfile()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void isCloneProfile_usesContextUser() {
+    assertThat(userManager.isCloneProfile()).isFalse();
+
+    UserInfo profileUserInfo =
+        new UserInfo(
+            PROFILE_USER_HANDLE,
+            PROFILE_USER_NAME,
+            /* iconPath= */ null,
+            /* profileFlags= */ 0,
+            UserManager.USER_TYPE_PROFILE_CLONE);
+    shadowOf(userManager).addProfile(0, PROFILE_USER_HANDLE, profileUserInfo);
+    assertThat(userManager.isCloneProfile()).isFalse();
+
+    setUserIdInContext(PROFILE_USER_HANDLE);
+    assertThat(userManager.isCloneProfile()).isTrue();
   }
 
   @Test
@@ -228,10 +255,7 @@ public class ShadowUserManagerTest {
         userManager.createProfile(PROFILE_USER_NAME, UserManager.USER_TYPE_PROFILE_MANAGED, null);
     assertThat(userManager.isProfile()).isFalse();
 
-    Application application = ApplicationProvider.getApplicationContext();
-    ShadowContextImpl shadowContext = Shadow.extract(application.getBaseContext());
-    shadowContext.setUserId(profileHandle.getIdentifier());
-
+    setUserIdInContext(profileHandle.getIdentifier());
     assertThat(userManager.isProfile()).isTrue();
   }
 
@@ -314,6 +338,19 @@ public class ShadowUserManagerTest {
     long serialNumber = userManager.getUserSerialNumber(10);
     int actualUserHandle = shadowOf(userManager).getUserHandle((int) serialNumber);
     assertThat(actualUserHandle).isEqualTo(expectedUserHandle.getIdentifier());
+  }
+
+  @Test
+  @Config(minSdk = R)
+  public void getUserHandles() {
+    assertThat(shadowOf(userManager).getUserHandles(/* excludeDying= */ true).size()).isEqualTo(1);
+    assertThat(shadowOf(userManager).getUserHandles(/* excludeDying= */ true).get(0).myUserId())
+        .isEqualTo(UserHandle.USER_SYSTEM);
+
+    UserHandle expectedUserHandle = shadowOf(userManager).addUser(10, "secondary_user", 0);
+    assertThat(shadowOf(userManager).getUserHandles(/* excludeDying= */ true).size()).isEqualTo(2);
+    assertThat(shadowOf(userManager).getUserHandles(/* excludeDying= */ true).get(1))
+        .isEqualTo(expectedUserHandle);
   }
 
   @Test
@@ -706,9 +743,7 @@ public class ShadowUserManagerTest {
     shadowOf(userManager).setMaxSupportedUsers(2);
     userManager.createProfile(PROFILE_USER_NAME, UserManager.USER_TYPE_PROFILE_MANAGED, null);
 
-    Application application = ApplicationProvider.getApplicationContext();
-    ShadowContextImpl shadowContext = Shadow.extract(application.getBaseContext());
-    shadowContext.setUserId(ShadowUserManager.DEFAULT_SECONDARY_USER_ID);
+    setUserIdInContext(ShadowUserManager.DEFAULT_SECONDARY_USER_ID);
     assertThat(userManager.getUserName()).isEqualTo(PROFILE_USER_NAME);
   }
 
@@ -807,13 +842,11 @@ public class ShadowUserManagerTest {
 
     userManager.setUserName("new user name");
 
-    Application application = ApplicationProvider.getApplicationContext();
-    ShadowContextImpl shadowContext = Shadow.extract(application.getBaseContext());
-    shadowContext.setUserId(PROFILE_USER_HANDLE);
+    setUserIdInContext(PROFILE_USER_HANDLE);
     userManager.setUserName("new profile name");
     assertThat(userManager.getUserName()).isEqualTo("new profile name");
 
-    shadowContext.setUserId(TEST_USER_HANDLE);
+    setUserIdInContext(TEST_USER_HANDLE);
     assertThat(userManager.getUserName()).isEqualTo("new user name");
   }
 
@@ -826,10 +859,7 @@ public class ShadowUserManagerTest {
         userManager.createProfile(PROFILE_USER_NAME, UserManager.USER_TYPE_PROFILE_MANAGED, null);
     assertThat(userManager.isUserOfType(UserManager.USER_TYPE_PROFILE_MANAGED)).isFalse();
 
-    Application application = ApplicationProvider.getApplicationContext();
-    ShadowContextImpl shadowContext = Shadow.extract(application.getBaseContext());
-    shadowContext.setUserId(newUser.getIdentifier());
-
+    setUserIdInContext(newUser.getIdentifier());
     assertThat(userManager.isUserOfType(UserManager.USER_TYPE_PROFILE_MANAGED)).isTrue();
   }
 
@@ -1057,12 +1087,30 @@ public class ShadowUserManagerTest {
     assertThat(receivedHandle.get()).isNull();
   }
 
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void someUserHasAccount() {
+    assertThat(userManager.someUserHasAccount(SEED_ACCOUNT_NAME, SEED_ACCOUNT_TYPE)).isFalse();
+
+    shadowOf(userManager).setSomeUserHasAccount(SEED_ACCOUNT_NAME, SEED_ACCOUNT_TYPE);
+    assertThat(userManager.someUserHasAccount(SEED_ACCOUNT_NAME, SEED_ACCOUNT_TYPE)).isTrue();
+
+    shadowOf(userManager).removeSomeUserHasAccount(SEED_ACCOUNT_NAME, SEED_ACCOUNT_TYPE);
+    assertThat(userManager.someUserHasAccount(SEED_ACCOUNT_NAME, SEED_ACCOUNT_TYPE)).isFalse();
+  }
+
   // Create user handle from parcel since UserHandle.of() was only added in later APIs.
   private static UserHandle newUserHandle(int uid) {
     Parcel userParcel = Parcel.obtain();
     userParcel.writeInt(uid);
     userParcel.setDataPosition(0);
     return new UserHandle(userParcel);
+  }
+
+  private static void setUserIdInContext(int userId) {
+    Application application = ApplicationProvider.getApplicationContext();
+    ShadowContextImpl shadowContext = Shadow.extract(application.getBaseContext());
+    shadowContext.setUserId(userId);
   }
 
   private static void setPermissions(String... permissions) {

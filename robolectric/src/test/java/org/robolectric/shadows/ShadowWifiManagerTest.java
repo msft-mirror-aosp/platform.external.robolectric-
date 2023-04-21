@@ -23,9 +23,11 @@ import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.AddNetworkResult;
 import android.net.wifi.WifiManager.MulticastLock;
 import android.net.wifi.WifiUsabilityStatsEntry;
 import android.os.Build;
@@ -40,6 +42,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.util.ReflectionHelpers;
 
 @RunWith(AndroidJUnit4.class)
 public class ShadowWifiManagerTest {
@@ -59,9 +62,17 @@ public class ShadowWifiManagerTest {
 
   @Test
   public void setWifiInfo_shouldUpdateWifiInfo() {
-    WifiInfo wifiInfo = new WifiInfo();
+    WifiInfo wifiInfo = newWifiInfo();
     shadowOf(wifiManager).setConnectionInfo(wifiInfo);
     assertThat(wifiManager.getConnectionInfo()).isSameInstanceAs(wifiInfo);
+  }
+
+  private static WifiInfo newWifiInfo() {
+    if (RuntimeEnvironment.getApiLevel() >= LOLLIPOP) {
+      return new WifiInfo();
+    } else {
+      return ReflectionHelpers.callConstructor(WifiInfo.class);
+    }
   }
 
   @Test
@@ -230,11 +241,11 @@ public class ShadowWifiManagerTest {
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(networkId);
 
     // If we don't have permission to update, updateNetwork will return -1.
-    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission = */ false);
+    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission= */ false);
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(-1);
 
     // Ensure updates can occur if permission is restored.
-    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission = */ true);
+    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission= */ true);
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(networkId);
   }
 
@@ -251,6 +262,24 @@ public class ShadowWifiManagerTest {
 
     list = wifiManager.getConfiguredNetworks();
     assertThat(list.size()).isEqualTo(0);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void addNetworkPrivileged_nullConfig_shouldThrowIllegalArgumentException() {
+    assertThrows(IllegalArgumentException.class, () -> wifiManager.addNetworkPrivileged(null));
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void addNetworkPrivileged_nonNullConfig_shouldAddNetworkSuccessfully() {
+    WifiConfiguration wifiConfiguration = new WifiConfiguration();
+
+    AddNetworkResult addNetworkResult = wifiManager.addNetworkPrivileged(wifiConfiguration);
+
+    assertThat(addNetworkResult).isNotNull();
+    assertThat(addNetworkResult.statusCode).isEqualTo(AddNetworkResult.STATUS_SUCCESS);
+    assertThat(wifiManager.getConfiguredNetworks()).hasSize(1);
   }
 
   @Test
@@ -830,6 +859,21 @@ public class ShadowWifiManagerTest {
     assertThat(status).isTrue();
 
     assertThat(shadowOf(wifiManager).getWifiApConfiguration().SSID).isEqualTo("foo");
+  }
+
+  @Test
+  @Config(minSdk = R)
+  public void shouldRecordTheLastSoftApConfiguration() {
+    SoftApConfiguration softApConfig =
+        new SoftApConfiguration.Builder()
+            .setSsid("foo")
+            .setPassphrase(null, SoftApConfiguration.SECURITY_TYPE_OPEN)
+            .build();
+
+    boolean status = wifiManager.setSoftApConfiguration(softApConfig);
+    assertThat(status).isTrue();
+
+    assertThat(shadowOf(wifiManager).getSoftApConfiguration().getSsid()).isEqualTo("foo");
   }
 
   private void setDeviceOwner() {
