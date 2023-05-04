@@ -12,6 +12,7 @@ import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -53,7 +54,8 @@ public class ShadowWifiManager {
   private boolean wasSaved = false;
   private WifiInfo wifiInfo;
   private List<ScanResult> scanResults;
-  private final Map<Integer, WifiConfiguration> networkIdToConfiguredNetworks = new LinkedHashMap<>();
+  private final Map<Integer, WifiConfiguration> networkIdToConfiguredNetworks =
+      new LinkedHashMap<>();
   private Pair<Integer, Boolean> lastEnabledNetwork;
   private final Set<Integer> enabledNetworks = new HashSet<>();
   private DhcpInfo dhcpInfo;
@@ -68,6 +70,7 @@ public class ShadowWifiManager {
   private Object networkScorer;
   @RealObject WifiManager wifiManager;
   private WifiConfiguration apConfig;
+  private SoftApConfiguration softApConfig;
 
   @Implementation
   protected boolean setWifiEnabled(boolean wifiEnabled) {
@@ -123,9 +126,7 @@ public class ShadowWifiManager {
     this.isStaApConcurrencySupported = isStaApConcurrencySupported;
   }
 
-  /**
-   * Sets the connection info as the provided {@link WifiInfo}.
-   */
+  /** Sets the connection info as the provided {@link WifiInfo}. */
   public void setConnectionInfo(WifiInfo wifiInfo) {
     this.wifiInfo = wifiInfo;
   }
@@ -267,9 +268,10 @@ public class ShadowWifiManager {
   protected void connect(WifiConfiguration wifiConfiguration, WifiManager.ActionListener listener) {
     WifiInfo wifiInfo = getConnectionInfo();
 
-    String ssid = isQuoted(wifiConfiguration.SSID)
-        ? stripQuotes(wifiConfiguration.SSID)
-        : wifiConfiguration.SSID;
+    String ssid =
+        isQuoted(wifiConfiguration.SSID)
+            ? stripQuotes(wifiConfiguration.SSID)
+            : wifiConfiguration.SSID;
 
     ShadowWifiInfo shadowWifiInfo = Shadow.extract(wifiInfo);
     shadowWifiInfo.setSSID(ssid);
@@ -472,6 +474,17 @@ public class ShadowWifiManager {
   @Implementation
   protected WifiConfiguration getWifiApConfiguration() {
     return apConfig;
+  }
+
+  @Implementation(minSdk = R)
+  protected boolean setSoftApConfiguration(SoftApConfiguration softApConfig) {
+    this.softApConfig = softApConfig;
+    return true;
+  }
+
+  @Implementation(minSdk = R)
+  protected SoftApConfiguration getSoftApConfiguration() {
+    return softApConfig;
   }
 
   /**
