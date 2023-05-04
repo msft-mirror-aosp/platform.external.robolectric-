@@ -11,7 +11,9 @@ android {
     defaultConfig {
         minSdk 16
         targetSdk 33
+        multiDexEnabled true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments useTestStorageService: 'true'
     }
 
     compileOptions {
