@@ -297,11 +297,10 @@ public class SandboxTestRunner extends BlockJUnit4ClassRunner {
                 } catch (Exception e) {
                   e.printStackTrace();
                 }
+                reportPerfStats(perfStatsCollector);
+                perfStatsCollector.reset();
               }
             });
-
-        reportPerfStats(perfStatsCollector);
-        perfStatsCollector.reset();
       }
     };
   }
