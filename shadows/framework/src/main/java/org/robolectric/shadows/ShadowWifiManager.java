@@ -14,9 +14,11 @@ import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.AddNetworkResult;
 import android.net.wifi.WifiManager.MulticastLock;
 import android.net.wifi.WifiUsabilityStatsEntry;
 import android.os.Handler;
@@ -56,7 +58,8 @@ public class ShadowWifiManager {
   private boolean wasSaved = false;
   private WifiInfo wifiInfo;
   private List<ScanResult> scanResults;
-  private final Map<Integer, WifiConfiguration> networkIdToConfiguredNetworks = new LinkedHashMap<>();
+  private final Map<Integer, WifiConfiguration> networkIdToConfiguredNetworks =
+      new LinkedHashMap<>();
   private Pair<Integer, Boolean> lastEnabledNetwork;
   private final Set<Integer> enabledNetworks = new HashSet<>();
   private DhcpInfo dhcpInfo;
@@ -71,6 +74,7 @@ public class ShadowWifiManager {
   private Object networkScorer;
   @RealObject WifiManager wifiManager;
   private WifiConfiguration apConfig;
+  private SoftApConfiguration softApConfig;
 
   @Implementation
   protected boolean setWifiEnabled(boolean wifiEnabled) {
@@ -126,9 +130,7 @@ public class ShadowWifiManager {
     this.isStaApConcurrencySupported = isStaApConcurrencySupported;
   }
 
-  /**
-   * Sets the connection info as the provided {@link WifiInfo}.
-   */
+  /** Sets the connection info as the provided {@link WifiInfo}. */
   public void setConnectionInfo(WifiInfo wifiInfo) {
     this.wifiInfo = wifiInfo;
   }
@@ -179,6 +181,21 @@ public class ShadowWifiManager {
     config.networkId = -1;
     networkIdToConfiguredNetworks.put(networkId, makeCopy(config, networkId));
     return networkId;
+  }
+
+  /**
+   * The new version of {@link #addNetwork(WifiConfiguration)} which returns a more detailed failure
+   * codes. The original implementation of this API is limited to Device Owner (DO), Profile Owner
+   * (PO), system app, and privileged apps but this shadow can be called by all apps.
+   */
+  @Implementation(minSdk = S)
+  protected AddNetworkResult addNetworkPrivileged(WifiConfiguration config) {
+    if (config == null) {
+      throw new IllegalArgumentException("config cannot be null");
+    }
+
+    int networkId = addNetwork(config);
+    return new AddNetworkResult(AddNetworkResult.STATUS_SUCCESS, networkId);
   }
 
   @Implementation
@@ -298,9 +315,10 @@ public class ShadowWifiManager {
   protected void connect(WifiConfiguration wifiConfiguration, WifiManager.ActionListener listener) {
     WifiInfo wifiInfo = getConnectionInfo();
 
-    String ssid = isQuoted(wifiConfiguration.SSID)
-        ? stripQuotes(wifiConfiguration.SSID)
-        : wifiConfiguration.SSID;
+    String ssid =
+        isQuoted(wifiConfiguration.SSID)
+            ? stripQuotes(wifiConfiguration.SSID)
+            : wifiConfiguration.SSID;
 
     ShadowWifiInfo shadowWifiInfo = Shadow.extract(wifiInfo);
     shadowWifiInfo.setSSID(ssid);
@@ -521,6 +539,17 @@ public class ShadowWifiManager {
   @Implementation
   protected WifiConfiguration getWifiApConfiguration() {
     return apConfig;
+  }
+
+  @Implementation(minSdk = R)
+  protected boolean setSoftApConfiguration(SoftApConfiguration softApConfig) {
+    this.softApConfig = softApConfig;
+    return true;
+  }
+
+  @Implementation(minSdk = R)
+  protected SoftApConfiguration getSoftApConfiguration() {
+    return softApConfig;
   }
 
   /**

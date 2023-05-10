@@ -1,5 +1,6 @@
 package org.robolectric.shadows;
 
+import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
@@ -18,11 +19,16 @@ import android.util.SparseArray;
 import android.view.Display;
 import android.view.DisplayInfo;
 import com.google.common.annotations.VisibleForTesting;
+
+import java.lang.reflect.Field;
+import java.sql.Array;
+import java.text.Format;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.annotation.Nullable;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
@@ -79,10 +85,21 @@ public class ShadowDisplayManagerGlobal {
   private static DisplayManagerGlobal newDisplayManagerGlobal(IDisplayManager displayManager) {
     instance = Shadow.newInstanceOf(DisplayManagerGlobal.class);
     DisplayManagerGlobalReflector displayManagerGlobal =
-        reflector(DisplayManagerGlobalReflector.class, instance);
+            reflector(DisplayManagerGlobalReflector.class, instance);
     displayManagerGlobal.setDm(displayManager);
     displayManagerGlobal.setLock(new Object());
-    displayManagerGlobal.setDisplayListeners(new CopyOnWriteArrayList<>());
+
+    List displayListeners = new CopyOnWriteArrayList();
+    try {
+      // TODO: rexhoffman when we have sufficient detection in android dev replace
+      // this with a version check.
+      Field f = DisplayManagerGlobal.class.getDeclaredField("mDisplayListeners");
+      if (f.getType().isAssignableFrom(ArrayList.class)) {
+        displayListeners = new ArrayList();
+      }
+    } catch (NoSuchFieldException e) {
+    }
+    displayManagerGlobal.setDisplayListeners(displayListeners);
     displayManagerGlobal.setDisplayInfoCache(new SparseArray<>());
     return instance;
   }
@@ -265,7 +282,7 @@ public class ShadowDisplayManagerGlobal {
     void setLock(Object lock);
 
     @Accessor("mDisplayListeners")
-    void setDisplayListeners(CopyOnWriteArrayList<Handler> list);
+    void setDisplayListeners(List<Handler> list);
 
     @Accessor("mDisplayInfoCache")
     void setDisplayInfoCache(SparseArray<DisplayInfo> displayInfoCache);
