@@ -12,11 +12,11 @@ import android.os.Looper;
 import android.os.Message;
 import android.speech.IRecognitionService;
 import android.speech.RecognitionListener;
-import android.speech.RecognitionSupport;
-import android.speech.RecognitionSupportCallback;
 import android.speech.SpeechRecognizer;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import com.google.common.base.Preconditions;
 import java.util.Queue;
 import java.util.concurrent.Executor;
 import org.robolectric.annotation.Implementation;
@@ -30,7 +30,7 @@ import org.robolectric.util.reflector.ForType;
 import org.robolectric.util.reflector.Static;
 
 /** Robolectric shadow for SpeechRecognizer. */
-@Implements(SpeechRecognizer.class)
+@Implements(value = SpeechRecognizer.class, looseSignatures = true)
 public class ShadowSpeechRecognizer {
 
   @RealObject SpeechRecognizer realSpeechRecognizer;
@@ -38,14 +38,15 @@ public class ShadowSpeechRecognizer {
   private Intent recognizerIntent;
   private RecognitionListener recognitionListener;
   private static boolean isOnDeviceRecognitionAvailable = true;
+  private boolean isRecognizerDestroyed = false;
 
-  private RecognitionSupportCallback recognitionSupportCallback;
+  private /*RecognitionSupportCallback*/ Object recognitionSupportCallback;
   private Executor recognitionSupportExecutor;
   @Nullable private Intent latestModelDownloadIntent;
 
   /**
    * Returns the latest SpeechRecognizer. This method can only be called after {@link
-   * SpeechRecognizer#createSpeechRecognizer()} is called.
+   * SpeechRecognizer#createSpeechRecognizer(Context)} is called.
    */
   public static SpeechRecognizer getLatestSpeechRecognizer() {
     return latestSpeechRecognizer;
@@ -56,10 +57,21 @@ public class ShadowSpeechRecognizer {
     return recognizerIntent;
   }
 
+  /** Returns true iff the destroy method of was invoked for the recognizer. */
+  public boolean isDestroyed() {
+    return isRecognizerDestroyed;
+  }
+
   @Resetter
   public static void reset() {
     latestSpeechRecognizer = null;
     isOnDeviceRecognitionAvailable = true;
+  }
+
+  @Implementation
+  protected void destroy() {
+    isRecognizerDestroyed = true;
+    reflector(SpeechRecognizerReflector.class, realSpeechRecognizer).destroy();
   }
 
   @Implementation
@@ -75,6 +87,10 @@ public class ShadowSpeechRecognizer {
   @Implementation
   protected void startListening(Intent recognizerIntent) {
     this.recognizerIntent = recognizerIntent;
+    // from the implementation of {@link SpeechRecognizer#startListening} it seems that it allows
+    // running the method on an already destroyed object, so we replicate the same by resetting
+    // isRecognizerDestroyed
+    isRecognizerDestroyed = false;
     // the real implementation connects to a service
     // simulate the resulting behavior once the service is connected
     Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -138,10 +154,17 @@ public class ShadowSpeechRecognizer {
     return isOnDeviceRecognitionAvailable;
   }
 
+  @RequiresApi(api = VERSION_CODES.TIRAMISU)
   @Implementation(minSdk = VERSION_CODES.TIRAMISU)
   protected void checkRecognitionSupport(
-      Intent recognizerIntent, Executor executor, RecognitionSupportCallback supportListener) {
-    recognitionSupportExecutor = executor;
+      @NonNull /*Intent*/ Object recognizerIntent,
+      @NonNull /*Executor*/ Object executor,
+      @NonNull /*RecognitionSupportCallback*/ Object supportListener) {
+    Preconditions.checkArgument(recognizerIntent instanceof Intent);
+    Preconditions.checkArgument(executor instanceof Executor);
+    Preconditions.checkArgument(
+        supportListener instanceof android.speech.RecognitionSupportCallback);
+    recognitionSupportExecutor = (Executor) executor;
     recognitionSupportCallback = supportListener;
   }
 
@@ -155,14 +178,20 @@ public class ShadowSpeechRecognizer {
   }
 
   @RequiresApi(VERSION_CODES.TIRAMISU)
-  public void triggerSupportResult(RecognitionSupport recognitionSupport) {
+  public void triggerSupportResult(/*RecognitionSupport*/ Object recognitionSupport) {
+    Preconditions.checkArgument(recognitionSupport instanceof android.speech.RecognitionSupport);
     recognitionSupportExecutor.execute(
-        () -> recognitionSupportCallback.onSupportResult(recognitionSupport));
+        () ->
+            ((android.speech.RecognitionSupportCallback) recognitionSupportCallback)
+                .onSupportResult((android.speech.RecognitionSupport) recognitionSupport));
   }
 
   @RequiresApi(VERSION_CODES.TIRAMISU)
   public void triggerSupportError(int error) {
-    recognitionSupportExecutor.execute(() -> recognitionSupportCallback.onError(error));
+    recognitionSupportExecutor.execute(
+        () ->
+            ((android.speech.RecognitionSupportCallback) recognitionSupportCallback)
+                .onError(error));
   }
 
   @RequiresApi(VERSION_CODES.TIRAMISU)
@@ -178,6 +207,9 @@ public class ShadowSpeechRecognizer {
     @Static
     @Direct
     SpeechRecognizer createSpeechRecognizer(Context context, ComponentName serviceComponent);
+
+    @Direct
+    void destroy();
 
     @Accessor("mService")
     void setService(IRecognitionService service);

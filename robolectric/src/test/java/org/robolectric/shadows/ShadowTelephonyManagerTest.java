@@ -33,6 +33,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
@@ -44,7 +45,10 @@ import static org.robolectric.RuntimeEnvironment.getApplication;
 import static org.robolectric.Shadows.shadowOf;
 import static org.robolectric.shadows.ShadowTelephonyManager.createTelephonyDisplayInfo;
 
+import android.Manifest.permission;
+import android.app.Application;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build.VERSION;
@@ -99,6 +103,8 @@ public class ShadowTelephonyManagerTest {
   public void setUp() throws Exception {
     telephonyManager = (TelephonyManager) getApplication().getSystemService(TELEPHONY_SERVICE);
     shadowTelephonyManager = Shadow.extract(telephonyManager);
+    shadowOf((Application) ApplicationProvider.getApplicationContext())
+        .grantPermissions(permission.READ_PRIVILEGED_PHONE_STATE);
   }
 
   @Test
@@ -962,7 +968,7 @@ public class ShadowTelephonyManagerTest {
   @Test
   @Config(minSdk = S)
   public void setCallComposerStatus() {
-    ShadowTelephonyManager.setCallComposerStatus(CALL_COMPOSER_STATUS_ON);
+    telephonyManager.setCallComposerStatus(CALL_COMPOSER_STATUS_ON);
 
     assertThat(telephonyManager.getCallComposerStatus()).isEqualTo(CALL_COMPOSER_STATUS_ON);
   }
@@ -1029,5 +1035,37 @@ public class ShadowTelephonyManagerTest {
     telephonyManager.setVisualVoicemailSmsFilterSettings(null);
 
     assertThat(shadowOf(telephonyManager).getVisualVoicemailSmsFilterSettings()).isNull();
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void isEmergencyNumber_telephonyServiceUnavailable_throwsIllegalStateException() {
+    ShadowServiceManager.setServiceAvailability(Context.TELEPHONY_SERVICE, false);
+
+    assertThrows(IllegalStateException.class, () -> telephonyManager.isEmergencyNumber("911"));
+  }
+
+  @Test
+  @Config(minSdk = O)
+  public void
+      getEmergencyCallbackMode_noReadPrivilegedPhoneStatePermission_throwsSecurityException() {
+    shadowOf((Application) ApplicationProvider.getApplicationContext())
+        .denyPermissions(permission.READ_PRIVILEGED_PHONE_STATE);
+
+    assertThrows(SecurityException.class, () -> telephonyManager.getEmergencyCallbackMode());
+  }
+
+  @Test
+  @Config(minSdk = O)
+  public void getEmergencyCallback_wasSetToTrue_returnsTrue() {
+    shadowTelephonyManager.setEmergencyCallbackMode(true);
+
+    assertThat(telephonyManager.getEmergencyCallbackMode()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = O)
+  public void getEmergencyCallback_notSet_returnsFalse() {
+    assertThat(telephonyManager.getEmergencyCallbackMode()).isFalse();
   }
 }

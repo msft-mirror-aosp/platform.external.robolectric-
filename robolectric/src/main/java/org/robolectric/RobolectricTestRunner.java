@@ -24,6 +24,7 @@ import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
 import org.robolectric.android.AndroidSdkShadowMatcher;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.annotation.LooperMode.Mode;
 import org.robolectric.annotation.SQLiteMode;
@@ -273,8 +274,11 @@ public class RobolectricTestRunner extends SandboxTestRunner {
 
     if (resourcesMode == ResourcesMode.LEGACY && sdk.getApiLevel() > Build.VERSION_CODES.P) {
       System.err.println(
-          "Skip " + method.getName() + " because Robolectric doesn't support legacy mode after P");
-      throw new AssumptionViolatedException("Robolectric doesn't support legacy mode after P");
+          "Skip "
+              + method.getName()
+              + " because Robolectric doesn't support legacy resources mode after P");
+      throw new AssumptionViolatedException(
+          "Robolectric doesn't support legacy resources mode after P");
     }
     LooperMode.Mode looperMode =
         roboMethod.configuration == null
@@ -286,9 +290,14 @@ public class RobolectricTestRunner extends SandboxTestRunner {
             ? SQLiteMode.Mode.LEGACY
             : roboMethod.configuration.get(SQLiteMode.Mode.class);
 
+    GraphicsMode.Mode graphicsMode =
+        roboMethod.configuration == null
+            ? GraphicsMode.Mode.LEGACY
+            : roboMethod.configuration.get(GraphicsMode.Mode.class);
+
     sdk.verifySupportedSdk(method.getDeclaringClass().getName());
     return sandboxManager.getAndroidSandbox(
-        classLoaderConfig, sdk, resourcesMode, looperMode, sqliteMode);
+        classLoaderConfig, sdk, resourcesMode, looperMode, sqliteMode, graphicsMode);
   }
 
   @Override

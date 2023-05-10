@@ -14,11 +14,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.robolectric.Shadows.shadowOf;
 
+import android.app.admin.DeviceAdminService;
+import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -226,11 +230,11 @@ public class ShadowWifiManagerTest {
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(networkId);
 
     // If we don't have permission to update, updateNetwork will return -1.
-    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission = */ false);
+    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission= */ false);
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(-1);
 
     // Ensure updates can occur if permission is restored.
-    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission = */ true);
+    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission= */ true);
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(networkId);
   }
 
@@ -675,6 +679,21 @@ public class ShadowWifiManagerTest {
   }
 
   @Test
+  @Config(minSdk = R)
+  public void testSetClearWifiConnectedNetworkScorer() {
+    // GIVEN
+    WifiManager.WifiConnectedNetworkScorer mockScorer =
+        mock(WifiManager.WifiConnectedNetworkScorer.class);
+    // WHEN
+    wifiManager.setWifiConnectedNetworkScorer(directExecutor(), mockScorer);
+    assertThat(shadowOf(wifiManager).isWifiConnectedNetworkScorerEnabled()).isTrue();
+    wifiManager.clearWifiConnectedNetworkScorer();
+
+    // THEN
+    assertThat(shadowOf(wifiManager).isWifiConnectedNetworkScorerEnabled()).isFalse();
+  }
+
+  @Test
   @Config(minSdk = Q)
   public void testGetUsabilityScores() {
     // GIVEN
@@ -748,5 +767,30 @@ public class ShadowWifiManagerTest {
     assertThat(status).isTrue();
 
     assertThat(shadowOf(wifiManager).getWifiApConfiguration().SSID).isEqualTo("foo");
+  }
+
+  @Test
+  @Config(minSdk = R)
+  public void shouldRecordTheLastSoftApConfiguration() {
+    SoftApConfiguration softApConfig =
+        new SoftApConfiguration.Builder()
+            .setSsid("foo")
+            .setPassphrase(null, SoftApConfiguration.SECURITY_TYPE_OPEN)
+            .build();
+
+    boolean status = wifiManager.setSoftApConfiguration(softApConfig);
+    assertThat(status).isTrue();
+
+    assertThat(shadowOf(wifiManager).getSoftApConfiguration().getSsid()).isEqualTo("foo");
+  }
+
+  private void setDeviceOwner() {
+    shadowOf(
+            (DevicePolicyManager)
+                ApplicationProvider.getApplicationContext()
+                    .getSystemService(Context.DEVICE_POLICY_SERVICE))
+        .setDeviceOwner(
+            new ComponentName(
+                ApplicationProvider.getApplicationContext(), DeviceAdminService.class));
   }
 }

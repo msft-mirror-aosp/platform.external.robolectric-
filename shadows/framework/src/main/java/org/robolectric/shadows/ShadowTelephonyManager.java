@@ -1,5 +1,6 @@
 package org.robolectric.shadows;
 
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
 import static android.os.Build.VERSION_CODES.LOLLIPOP;
@@ -20,7 +21,9 @@ import static android.telephony.PhoneStateListener.LISTEN_SERVICE_STATE;
 import static android.telephony.TelephonyManager.CALL_STATE_IDLE;
 import static android.telephony.TelephonyManager.CALL_STATE_RINGING;
 
+import android.Manifest.permission;
 import android.annotation.CallSuper;
+import android.app.ActivityThread;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -64,11 +67,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.annotation.Resetter;
+import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.ReflectionHelpers;
 
 @Implements(value = TelephonyManager.class, looseSignatures = true)
@@ -77,7 +82,8 @@ public class ShadowTelephonyManager {
   @RealObject protected TelephonyManager realTelephonyManager;
 
   private final Map<PhoneStateListener, Integer> phoneStateRegistrations = new HashMap<>();
-  private final List<TelephonyCallback> telephonyCallbackRegistrations = new ArrayList<>();
+  private final /*List<TelephonyCallback>*/ List<Object> telephonyCallbackRegistrations =
+      new ArrayList<>();
   private final Map<Integer, String> slotIndexToDeviceId = new HashMap<>();
   private final Map<Integer, String> slotIndexToImei = new HashMap<>();
   private final Map<Integer, String> slotIndexToMeid = new HashMap<>();
@@ -87,7 +93,7 @@ public class ShadowTelephonyManager {
       new HashMap<>();
 
   private PhoneStateListener lastListener;
-  private TelephonyCallback lastTelephonyCallback;
+  private /*TelephonyCallback*/ Object lastTelephonyCallback;
   private int lastEventFlags;
 
   private String deviceId;
@@ -131,6 +137,7 @@ public class ShadowTelephonyManager {
   private int carrierIdFromSimMccMnc;
   private String subscriberId;
   private /*UiccSlotInfo[]*/ Object uiccSlotInfos;
+  private /*UiccCardInfo[]*/ Object uiccCardsInfo;
   private String visualVoicemailPackageName = null;
   private SignalStrength signalStrength;
   private boolean dataEnabled = false;
@@ -144,6 +151,7 @@ public class ShadowTelephonyManager {
   private static int callComposerStatus = 0;
   private VisualVoicemailSmsParams lastVisualVoicemailSmsParams;
   private VisualVoicemailSmsFilterSettings visualVoicemailSmsFilterSettings;
+  private boolean emergencyCallbackMode;
 
   /**
    * Should be {@link TelephonyManager.BootstrapAuthenticationCallback} but this object was
@@ -163,7 +171,8 @@ public class ShadowTelephonyManager {
     callComposerStatus = 0;
   }
 
-  public static void setCallComposerStatus(int callComposerStatus) {
+  @Implementation(minSdk = S)
+  protected void setCallComposerStatus(int callComposerStatus) {
     ShadowTelephonyManager.callComposerStatus = callComposerStatus;
   }
 
@@ -225,7 +234,10 @@ public class ShadowTelephonyManager {
   }
 
   @Implementation(minSdk = S)
-  public void registerTelephonyCallback(Executor executor, TelephonyCallback callback) {
+  public void registerTelephonyCallback(
+      /*Executor*/ Object executor, /*TelephonyCallback*/ Object callback) {
+    Preconditions.checkArgument(executor instanceof Executor);
+    Preconditions.checkArgument(callback instanceof TelephonyCallback);
     lastTelephonyCallback = callback;
     initTelephonyCallback(callback);
     telephonyCallbackRegistrations.add(callback);
@@ -233,17 +245,20 @@ public class ShadowTelephonyManager {
 
   @Implementation(minSdk = TIRAMISU)
   protected void registerTelephonyCallback(
-      int includeLocationData, Executor executor, TelephonyCallback callback) {
+      /*int*/ Object includeLocationData, /*Executor*/
+      Object executor, /*TelephonyCallback*/
+      Object callback) {
+    Preconditions.checkArgument(includeLocationData instanceof Integer);
     registerTelephonyCallback(executor, callback);
   }
 
   @Implementation(minSdk = S)
-  public void unregisterTelephonyCallback(TelephonyCallback callback) {
+  public void unregisterTelephonyCallback(/*TelephonyCallback*/ Object callback) {
     telephonyCallbackRegistrations.remove(callback);
   }
 
   /** Returns the most recent callback passed to #registerTelephonyCallback(). */
-  public TelephonyCallback getLastTelephonyCallback() {
+  public /*TelephonyCallback*/ Object getLastTelephonyCallback() {
     return lastTelephonyCallback;
   }
 
@@ -487,6 +502,18 @@ public class ShadowTelephonyManager {
     return uiccSlotInfos;
   }
 
+  /** Sets the UICC cards information returned by {@link #getUiccCardsInfo()}. */
+  public void setUiccCardsInfo(/*UiccCardsInfo[]*/ Object uiccCardsInfo) {
+    this.uiccCardsInfo = uiccCardsInfo;
+  }
+
+  /** Returns the UICC cards information set by {@link #setUiccCardsInfo}. */
+  @Implementation(minSdk = Q)
+  @HiddenApi
+  protected /*UiccSlotInfo[]*/ Object getUiccCardsInfo() {
+    return uiccCardsInfo;
+  }
+
   /** Clears {@code slotIndex} to state mapping and resets to default state. */
   public void resetSimStates() {
     simStates.clear();
@@ -501,6 +528,23 @@ public class ShadowTelephonyManager {
     if (!readPhoneStatePermission) {
       throw new SecurityException();
     }
+  }
+
+  private void checkReadPrivilegedPhoneStatePermission() {
+    if (!checkPermission(permission.READ_PRIVILEGED_PHONE_STATE)) {
+      throw new SecurityException();
+    }
+  }
+
+  static ShadowInstrumentation getShadowInstrumentation() {
+    ActivityThread activityThread = (ActivityThread) RuntimeEnvironment.getActivityThread();
+    return Shadow.extract(activityThread.getInstrumentation());
+  }
+
+  static boolean checkPermission(String permission) {
+    return getShadowInstrumentation()
+            .checkPermission(permission, android.os.Process.myPid(), android.os.Process.myUid())
+        == PERMISSION_GRANTED;
   }
 
   @Implementation
@@ -701,7 +745,7 @@ public class ShadowTelephonyManager {
   }
 
   @CallSuper
-  protected void initTelephonyCallback(TelephonyCallback callback) {
+  protected void initTelephonyCallback(Object callback) {
     if (VERSION.SDK_INT < S) {
       return;
     }
@@ -898,6 +942,7 @@ public class ShadowTelephonyManager {
    */
   @Implementation(minSdk = O)
   protected TelephonyManager createForPhoneAccountHandle(PhoneAccountHandle handle) {
+    checkReadPhoneStatePermission();
     return phoneAccountToTelephonyManagers.get(handle);
   }
 
@@ -1075,6 +1120,9 @@ public class ShadowTelephonyManager {
    */
   @Implementation(minSdk = Build.VERSION_CODES.Q)
   protected boolean isEmergencyNumber(String number) {
+    if (ShadowServiceManager.getService(Context.TELEPHONY_SERVICE) == null) {
+      throw new IllegalStateException("telephony service is null.");
+    }
 
     if (number == null) {
       return false;
@@ -1132,6 +1180,22 @@ public class ShadowTelephonyManager {
     }
 
     return false;
+  }
+
+  /**
+   * Emergency Callback Mode (ECBM) is typically set by the carrier, for a time window of 5 minutes
+   * after the last outgoing emergency call. The user can exit ECBM via a system notification.
+   *
+   * @param emergencyCallbackMode whether the device is in ECBM or not.
+   */
+  public void setEmergencyCallbackMode(boolean emergencyCallbackMode) {
+    this.emergencyCallbackMode = emergencyCallbackMode;
+  }
+
+  @Implementation(minSdk = Build.VERSION_CODES.O)
+  protected boolean getEmergencyCallbackMode() {
+    checkReadPrivilegedPhoneStatePermission();
+    return emergencyCallbackMode;
   }
 
   @Implementation(minSdk = Build.VERSION_CODES.Q)
