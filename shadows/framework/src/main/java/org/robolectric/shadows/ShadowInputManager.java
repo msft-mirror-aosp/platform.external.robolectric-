@@ -1,10 +1,13 @@
 package org.robolectric.shadows;
 
+import static android.os.Build.VERSION.SDK_INT;
 import static android.os.Build.VERSION_CODES.KITKAT;
 import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import android.hardware.input.InputManager;
+import android.hardware.input.InputManagerGlobal;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyEvent;
@@ -78,6 +81,13 @@ public class ShadowInputManager {
 
   @Resetter
   public static void reset() {
-    ReflectionHelpers.setStaticField(InputManager.class, "sInstance", null);
+    if (SDK_INT >= UPSIDE_DOWN_CAKE) {
+      ReflectionHelpers.setStaticField(InputManagerGlobal.class,
+              "sInstance", null);
+    }
+    else {
+      ReflectionHelpers.setStaticField(InputManager.class,
+              "sInstance", null);
+    }
   }
 }
