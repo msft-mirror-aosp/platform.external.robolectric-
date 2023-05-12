@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
@@ -88,17 +87,10 @@ public class ShadowDisplayManagerGlobal {
             reflector(DisplayManagerGlobalReflector.class, instance);
     displayManagerGlobal.setDm(displayManager);
     displayManagerGlobal.setLock(new Object());
-
-    List displayListeners = new CopyOnWriteArrayList();
-    try {
-      // TODO: rexhoffman when we have sufficient detection in android dev replace
-      // this with a version check.
-      Field f = DisplayManagerGlobal.class.getDeclaredField("mDisplayListeners");
-      if (f.getType().isAssignableFrom(ArrayList.class)) {
-        displayListeners = new ArrayList();
-      }
-    } catch (NoSuchFieldException e) {
-    }
+    List<Handler> displayListeners =
+        RuntimeEnvironment.getApiLevel() < ShadowBuild.UPSIDE_DOWN_CAKE
+            ? new ArrayList<>()
+            : new CopyOnWriteArrayList<>();
     displayManagerGlobal.setDisplayListeners(displayListeners);
     displayManagerGlobal.setDisplayInfoCache(new SparseArray<>());
     return instance;
