@@ -7,6 +7,9 @@
           package="org.robolectric.integrationtests.nativegraphics"
           android:sharedUserId="android.uid.phone"
           coreApp="true">
+  <uses-sdk
+      android:minSdkVersion="26"
+      android:targetSdkVersion="31" />
   <application>
     <activity
         android:name="com.android.myroboapplication.WelcomeActivity"
