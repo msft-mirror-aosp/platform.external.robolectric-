@@ -40,7 +40,7 @@ If you'd like to start a new project with Robolectric tests you can refer to `de
 
 ```groovy
 testImplementation "junit:junit:4.13.2"
-testImplementation "org.robolectric:robolectric:4.9.1"
+testImplementation "org.robolectric:robolectric:4.10.3"
 ```
 
 ## Building And Contributing
@@ -54,9 +54,6 @@ Those software configurations are recommended and tested.
 - JDK 11. Gradle JVM should be set to Java 11.
   - For command line, make sure the environment variable `JAVA_HOME` is correctly point to JDK11, or set the build environment by [Gradle CLI option](https://docs.gradle.org/current/userguide/command_line_interface.html#sec:environment_options) `-Dorg.gradle.java.home="YourJdkHomePath"` or by [Gradle Properties](https://docs.gradle.org/current/userguide/build_environment.html#sec:gradle_configuration_properties) `org.gradle.java.home=YourJdkHomePath`.
   - For both IntelliJ and Android Studio, see _Settings/Preferences | Build, Execution, Deployment | Build Tools | Gradle_.
-- Ninja 1.10.2+. Check it by `ninja --version`.
-- CMake 3.22.1+. Check it by `cmake --version`.
-- GCC 7.5.0+ on Linux or Apple clang 12.0.0+ on macOS. Check it by `gcc --version`.
 
 See [Building Robolectric](http://robolectric.org/building-robolectric/) for more details about setting up a build environment for Robolectric.
 
@@ -82,18 +79,3 @@ Run compatibility test suites on opening Emulator:
 
     ./gradlew connectedCheck
 
-### Using Snapshots
-
-If you would like to live on the bleeding edge, you can try running against a snapshot build. Keep in mind that snapshots represent the most recent changes on master and may contain bugs.
-
-#### build.gradle:
-
-```groovy
-repositories {
-    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
-}
-
-dependencies {
-    testImplementation "org.robolectric:robolectric:4.10-SNAPSHOT"
-}
-```

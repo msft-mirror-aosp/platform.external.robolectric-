@@ -58,15 +58,9 @@ public class ShadowLegacyLooper extends ShadowLooper {
   @Resetter
   public static synchronized void resetThreadLoopers() {
     // do not use looperMode() here, because its cached value might already have been reset
-    if (ConfigurationRegistry.get(LooperMode.Mode.class) == LooperMode.Mode.PAUSED) {
+    if (ConfigurationRegistry.get(LooperMode.Mode.class) != LooperMode.Mode.LEGACY) {
       // ignore if realistic looper
       return;
-    }
-    // Blech. We need to keep the main looper because somebody might refer to it in a static
-    // field. The other loopers need to be wrapped in WeakReferences so that they are not prevented
-    // from being garbage collected.
-    if (!isMainThread()) {
-      throw new IllegalStateException("you should only be calling this from the main thread!");
     }
     synchronized (loopingLoopers) {
       for (Looper looper : loopingLoopers.values()) {

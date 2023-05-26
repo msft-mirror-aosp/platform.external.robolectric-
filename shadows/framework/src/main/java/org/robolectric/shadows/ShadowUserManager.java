@@ -19,6 +19,7 @@ import static org.robolectric.util.ReflectionHelpers.ClassParameter.from;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.Manifest.permission;
+import android.accounts.Account;
 import android.annotation.UserIdInt;
 import android.app.Application;
 import android.content.Context;
@@ -39,6 +40,7 @@ import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -81,6 +83,7 @@ public class ShadowUserManager {
   @RealObject private UserManager realObject;
   private UserManagerState userManagerState;
   private Boolean managedProfile;
+  private Boolean cloneProfile;
   private boolean userUnlocked = true;
   private boolean isSystemUser = true;
 
@@ -96,6 +99,8 @@ public class ShadowUserManager {
   private Context context;
   private boolean enforcePermissions;
   private int userSwitchability = UserManager.SWITCHABILITY_STATUS_OK;
+
+  private final Set<Account> userAccounts = new HashSet<>();
 
   /**
    * Global UserManager state. Shared across {@link UserManager}s created in different {@link
@@ -122,10 +127,13 @@ public class ShadowUserManager {
 
     private int nextUserId = DEFAULT_SECONDARY_USER_ID;
 
+    // TODO: use UserInfo.FLAG_MAIN when available
+    private static final int FLAG_MAIN = 0x00004000;
+
     public UserManagerState() {
       int id = UserHandle.USER_SYSTEM;
       String name = "system_user";
-      int flags = UserInfo.FLAG_PRIMARY | UserInfo.FLAG_ADMIN;
+      int flags = UserInfo.FLAG_PRIMARY | UserInfo.FLAG_ADMIN | FLAG_MAIN;
 
       userSerialNumbers.put(id, (long) id);
       // Start the user as shut down.
@@ -298,15 +306,20 @@ public class ShadowUserManager {
     }
   }
 
-  /** Add a profile to be returned by {@link #getProfiles(int)}.* */
+  /** Add a profile to be returned by {@link #getProfiles(int)}. */
   public void addProfile(
       int userHandle, int profileUserHandle, String profileName, int profileFlags) {
+    UserInfo profileUserInfo = new UserInfo(profileUserHandle, profileName, profileFlags);
+    addProfile(userHandle, profileUserHandle, profileUserInfo);
+  }
+
+  /** Add a profile to be returned by {@link #getProfiles(int)}. */
+  public void addProfile(int userHandle, int profileUserHandle, UserInfo profileUserInfo) {
     // Don't override serial number set by setSerialNumberForUser()
     if (!userManagerState.userSerialNumbers.containsKey(profileUserHandle)) {
       // use UserHandle id as serial number unless setSerialNumberForUser() is used
       userManagerState.userSerialNumbers.put(profileUserHandle, (long) profileUserHandle);
     }
-    UserInfo profileUserInfo = new UserInfo(profileUserHandle, profileName, profileFlags);
     if (RuntimeEnvironment.getApiLevel() >= LOLLIPOP) {
       profileUserInfo.profileGroupId = userHandle;
       UserInfo parentUserInfo = getUserInfo(userHandle);
@@ -399,6 +412,34 @@ public class ShadowUserManager {
   /** Setter for {@link UserManager#isManagedProfile()}. */
   public void setManagedProfile(boolean managedProfile) {
     this.managedProfile = managedProfile;
+  }
+
+  /**
+   * If permissions are enforced (see {@link #enforcePermissionChecks(boolean)}) and the application
+   * doesn't have the {@link android.Manifest.permission#MANAGE_USERS} permission, throws a {@link
+   * SecurityManager} exception.
+   *
+   * @return true if the user is clone, or the value specified via {@link #setCloneProfile(boolean)}
+   * @see #enforcePermissionChecks(boolean)
+   * @see #setCloneProfile(boolean)
+   */
+  @Implementation(minSdk = S)
+  protected boolean isCloneProfile() {
+    if (enforcePermissions && !hasManageUsersPermission()) {
+      throw new SecurityException("You need MANAGE_USERS permission to: check isCloneProfile");
+    }
+
+    if (cloneProfile != null) {
+      return cloneProfile;
+    }
+
+    UserInfo info = getUserInfo(context.getUserId());
+    return info != null && info.isCloneProfile();
+  }
+
+  /** Setter for {@link UserManager#isCloneProfile()}. */
+  public void setCloneProfile(boolean cloneProfile) {
+    this.cloneProfile = cloneProfile;
   }
 
   @Implementation(minSdk = R)
@@ -597,6 +638,16 @@ public class ShadowUserManager {
   protected int getUserHandle(int serialNumber) {
     Integer userHandle = userManagerState.userSerialNumbers.inverse().get((long) serialNumber);
     return userHandle == null ? -1 : userHandle;
+  }
+
+  @HiddenApi
+  @Implementation(minSdk = R)
+  protected List<UserHandle> getUserHandles(boolean excludeDying) {
+    ArrayList<UserHandle> userHandles = new ArrayList<>();
+    for (int id : userManagerState.userSerialNumbers.keySet()) {
+      userHandles.addAll(userManagerState.userProfilesListMap.get(id));
+    }
+    return userHandles;
   }
 
   @HiddenApi
@@ -998,6 +1049,9 @@ public class ShadowUserManager {
 
   @Implementation(minSdk = JELLY_BEAN_MR1)
   protected boolean removeUser(int userHandle) {
+    if (!userManagerState.userInfoMap.containsKey(userHandle)) {
+      return false;
+    }
     userManagerState.userInfoMap.remove(userHandle);
     userManagerState.userPidMap.remove(userHandle);
     userManagerState.userSerialNumbers.remove(userHandle);
@@ -1019,6 +1073,13 @@ public class ShadowUserManager {
   @Implementation(minSdk = Q)
   protected boolean removeUser(UserHandle user) {
     return removeUser(user.getIdentifier());
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected int removeUserWhenPossible(UserHandle user, boolean overrideDevicePolicy) {
+    return removeUser(user.getIdentifier())
+        ? UserManager.REMOVE_RESULT_REMOVED
+        : UserManager.REMOVE_RESULT_ERROR_UNKNOWN;
   }
 
   @Implementation(minSdk = N)
@@ -1174,5 +1235,20 @@ public class ShadowUserManager {
 
     @Accessor("mUserId")
     void setUserId(int userId);
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected boolean someUserHasAccount(String accountName, String accountType) {
+    return userAccounts.contains(new Account(accountName, accountType));
+  }
+
+  /** Setter for {@link UserManager#someUserHasAccount(String, String)}. */
+  public void setSomeUserHasAccount(String accountName, String accountType) {
+    userAccounts.add(new Account(accountName, accountType));
+  }
+
+  /** Removes user account set via {@link #setSomeUserHasAccount(String, String)}. */
+  public void removeSomeUserHasAccount(String accountName, String accountType) {
+    userAccounts.remove(new Account(accountName, accountType));
   }
 }

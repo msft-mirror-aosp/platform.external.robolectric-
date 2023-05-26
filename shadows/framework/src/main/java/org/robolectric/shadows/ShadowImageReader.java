@@ -26,7 +26,7 @@ import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.ForType;
 
 /** Shadow for {@link android.media.ImageReader} */
-@Implements(ImageReader.class)
+@Implements(value = ImageReader.class, looseSignatures = true)
 public class ShadowImageReader {
   // Using same return codes as ImageReader.
   private static final int ACQUIRE_SUCCESS = 0;
@@ -64,9 +64,14 @@ public class ShadowImageReader {
     return ACQUIRE_SUCCESS;
   }
 
-  @Implementation(minSdk = TIRAMISU)
+  @Implementation(minSdk = TIRAMISU, maxSdk = TIRAMISU)
   protected int nativeImageSetup(Image image, boolean useLegacyImageFormat) {
     return nativeImageSetup(image);
+  }
+
+  @Implementation(minSdk = ShadowBuild.UPSIDE_DOWN_CAKE)
+  protected int nativeImageSetup(Object /* Image */ image) {
+    return nativeImageSetup((Image) image);
   }
 
   @Implementation(minSdk = KITKAT)

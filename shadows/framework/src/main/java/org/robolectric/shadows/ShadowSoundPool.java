@@ -4,6 +4,7 @@ import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.N_MR1;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 
 import android.content.Context;
 import android.media.IAudioService;
@@ -54,11 +55,23 @@ public class ShadowSoundPool {
     return 1;
   }
 
-  @Implementation(minSdk = M)
+  @Implementation(minSdk = M, maxSdk = TIRAMISU)
   protected int _play(
       int soundID, float leftVolume, float rightVolume, int priority, int loop, float rate) {
     playedSounds.add(new Playback(soundID, leftVolume, rightVolume, priority, loop, rate));
     return 1;
+  }
+
+  @Implementation(minSdk = ShadowBuild.UPSIDE_DOWN_CAKE)
+  protected int _play(
+      int soundID,
+      float leftVolume,
+      float rightVolume,
+      int priority,
+      int loop,
+      float rate,
+      int playerIId /* ignored */) {
+    return _play(soundID, leftVolume, rightVolume, priority, loop, rate);
   }
 
   // It's not possible to override the native _load method as that would only give access to a

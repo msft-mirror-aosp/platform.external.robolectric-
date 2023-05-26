@@ -59,6 +59,7 @@ import android.net.IIpSecService;
 import android.net.INetworkPolicyManager;
 import android.net.INetworkScoreService;
 import android.net.ITetheringConnector;
+import android.net.IVpnManager;
 import android.net.nsd.INsdManager;
 import android.net.vcn.IVcnManagementService;
 import android.net.wifi.IWifiManager;
@@ -88,6 +89,7 @@ import android.view.contentcapture.IContentCaptureManager;
 import android.view.translation.ITranslationManager;
 import com.android.internal.app.IAppOpsService;
 import com.android.internal.app.IBatteryStats;
+import com.android.internal.app.ISoundTriggerService;
 import com.android.internal.appwidget.IAppWidgetService;
 import com.android.internal.os.IDropBoxManagerService;
 import com.android.internal.statusbar.IStatusBar;
@@ -167,6 +169,7 @@ public class ShadowServiceManager {
     }
     if (RuntimeEnvironment.getApiLevel() >= N) {
       addBinderService(Context.CONTEXTHUB_SERVICE, IContextHubService.class);
+      addBinderService(Context.SOUND_TRIGGER_SERVICE, ISoundTriggerService.class);
     }
     if (RuntimeEnvironment.getApiLevel() >= N_MR1) {
       addBinderService(Context.SHORTCUT_SERVICE, IShortcutService.class);
@@ -209,6 +212,7 @@ public class ShadowServiceManager {
       addBinderService(Context.VCN_MANAGEMENT_SERVICE, IVcnManagementService.class);
       addBinderService(Context.TRANSLATION_MANAGER_SERVICE, ITranslationManager.class);
       addBinderService(Context.SENSOR_PRIVACY_SERVICE, ISensorPrivacyManager.class);
+      addBinderService(Context.VPN_MANAGEMENT_SERVICE, IVpnManager.class);
     }
     if (RuntimeEnvironment.getApiLevel() >= TIRAMISU) {
       addBinderService(Context.AMBIENT_CONTEXT_SERVICE, IAmbientContextManager.class);

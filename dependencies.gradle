@@ -1,38 +1,11 @@
 ext {
-    apiCompatVersion='4.9'
+    apiCompatVersion = libs.versions.robolectric.compat.get()
 
-    errorproneVersion='2.16'
-    errorproneJavacVersion='9+181-r4173-1'
-
-    // AndroidX test versions
-    axtMonitorVersion='1.6.0'
-    axtRunnerVersion='1.5.0'
-    axtRulesVersion='1.5.0'
-    axtCoreVersion='1.5.0'
-    axtTruthVersion='1.5.0'
-    espressoVersion='3.5.0'
-    axtJunitVersion='1.1.4'
-    axtTestServicesVersion='1.4.2'
-
-    // AndroidX versions
-    coreVersion='1.9.0'
-    appCompatVersion='1.4.1'
-    constraintlayoutVersion='2.1.4'
-    windowVersion='1.0.0'
-    fragmentVersion='1.5.3'
-
-    truthVersion='1.1.3'
-
-    junitVersion='4.13.2'
-
-    mockitoVersion='4.1.0'
-
-    guavaJREVersion='31.1-jre'
-
-    asmVersion='9.4'
-
-    kotlinVersion='1.7.20'
-    autoServiceVersion='1.0.1'
-    multidexVersion='2.0.1'
-    sqlite4javaVersion='1.0.392'
+    // https://github.com/gradle/gradle/issues/21267
+    axtCoreVersion = libs.versions.androidx.test.core.get()
+    axtJunitVersion = libs.versions.androidx.test.ext.junit.get()
+    axtMonitorVersion = libs.versions.androidx.test.monitor.get()
+    axtRunnerVersion = libs.versions.androidx.test.runner.get()
+    axtTruthVersion = libs.versions.androidx.test.ext.truth.get()
+    espressoVersion = libs.versions.androidx.test.espresso.get()
 }

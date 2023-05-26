@@ -5,8 +5,9 @@ import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.O_MR1;
+import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.R;
-import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
@@ -18,6 +19,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.IncrementalStatesInfo;
 import android.content.pm.LauncherActivityInfo;
 import android.content.pm.LauncherActivityInfoInternal;
 import android.content.pm.LauncherApps;
@@ -25,6 +27,7 @@ import android.content.pm.LauncherApps.ShortcutQuery;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ShortcutInfo;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -39,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.ReflectionHelpers;
@@ -100,12 +104,12 @@ public class ShadowLauncherAppsTest {
   }
 
   @Test
-  @Config(minSdk = O, maxSdk = R)
+  @Config(minSdk = O)
   public void getShortcutConfigActivityList_getsShortcutsForPackageName() {
     LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME, USER_HANDLE);
     LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME_2, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME_2, USER_HANDLE);
     shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo1);
     shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo2);
 
@@ -114,26 +118,12 @@ public class ShadowLauncherAppsTest {
   }
 
   @Test
-  @Config(minSdk = S)
-  public void getShortcutConfigActivityListS_getsShortcutsForPackageName() {
-    LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME, USER_HANDLE);
-    LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME_2, USER_HANDLE);
-    shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo1);
-    shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo2);
-
-    assertThat(launcherApps.getShortcutConfigActivityList(TEST_PACKAGE_NAME, USER_HANDLE))
-        .contains(launcherActivityInfo1);
-  }
-
-  @Test
-  @Config(minSdk = O, maxSdk = R)
+  @Config(minSdk = O)
   public void getShortcutConfigActivityList_getsShortcutsForUserHandle() {
     LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME, USER_HANDLE);
     LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME, UserHandle.of(10));
+        createLauncherActivityInfo(TEST_PACKAGE_NAME, UserHandle.of(10));
     shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo1);
     shadowOf(launcherApps).addShortcutConfigActivity(UserHandle.of(10), launcherActivityInfo2);
 
@@ -142,45 +132,14 @@ public class ShadowLauncherAppsTest {
   }
 
   @Test
-  @Config(minSdk = S)
-  public void getShortcutConfigActivityListS_getsShortcutsForUserHandle() {
-    LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME, USER_HANDLE);
-    LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME, UserHandle.of(10));
-    shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo1);
-    shadowOf(launcherApps).addShortcutConfigActivity(UserHandle.of(10), launcherActivityInfo2);
-
-    assertThat(launcherApps.getShortcutConfigActivityList(TEST_PACKAGE_NAME, UserHandle.of(10)))
-        .contains(launcherActivityInfo2);
-  }
-
-  @Test
-  @Config(minSdk = O, maxSdk = R)
+  @Config(minSdk = O)
   public void getShortcutConfigActivityList_packageNull_getsShortcutFromAllPackagesForUser() {
     LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME, USER_HANDLE);
     LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME_2, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME_2, USER_HANDLE);
     LauncherActivityInfo launcherActivityInfo3 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME_3, UserHandle.of(10));
-    shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo1);
-    shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo2);
-    shadowOf(launcherApps).addShortcutConfigActivity(UserHandle.of(10), launcherActivityInfo3);
-
-    assertThat(launcherApps.getShortcutConfigActivityList(null, USER_HANDLE))
-        .containsExactly(launcherActivityInfo1, launcherActivityInfo2);
-  }
-
-  @Test
-  @Config(minSdk = S)
-  public void getShortcutConfigActivityListS_packageNull_getsShortcutFromAllPackagesForUser() {
-    LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME, USER_HANDLE);
-    LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME_2, USER_HANDLE);
-    LauncherActivityInfo launcherActivityInfo3 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME_3, UserHandle.of(10));
+        createLauncherActivityInfo(TEST_PACKAGE_NAME_3, UserHandle.of(10));
     shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo1);
     shadowOf(launcherApps).addShortcutConfigActivity(USER_HANDLE, launcherActivityInfo2);
     shadowOf(launcherApps).addShortcutConfigActivity(UserHandle.of(10), launcherActivityInfo3);
@@ -209,12 +168,12 @@ public class ShadowLauncherAppsTest {
   }
 
   @Test
-  @Config(minSdk = N, maxSdk = R)
+  @Config(minSdk = N)
   public void testGetActivityList() {
     assertThat(launcherApps.getActivityList(TEST_PACKAGE_NAME, USER_HANDLE)).isEmpty();
 
     LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME, USER_HANDLE);
 
     shadowOf(launcherApps).addActivity(USER_HANDLE, launcherActivityInfo1);
     assertThat(launcherApps.getActivityList(TEST_PACKAGE_NAME, USER_HANDLE))
@@ -222,25 +181,14 @@ public class ShadowLauncherAppsTest {
   }
 
   @Test
-  @Config(minSdk = S)
-  public void testGetActivityListS() {
-    LauncherActivityInfo launcherActivityInfo =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME, USER_HANDLE);
-    shadowOf(launcherApps).addActivity(USER_HANDLE, launcherActivityInfo);
-
-    assertThat(launcherApps.getActivityList(TEST_PACKAGE_NAME, USER_HANDLE))
-        .contains(launcherActivityInfo);
-  }
-
-  @Test
-  @Config(minSdk = N, maxSdk = R)
+  @Config(minSdk = N)
   public void testGetActivityList_packageNull_getsActivitiesFromAllPackagesForUser() {
     LauncherActivityInfo launcherActivityInfo1 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME, USER_HANDLE);
     LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME_2, USER_HANDLE);
+        createLauncherActivityInfo(TEST_PACKAGE_NAME_2, USER_HANDLE);
     LauncherActivityInfo launcherActivityInfo3 =
-        createLauncherActivityInfoPostN(TEST_PACKAGE_NAME_3, UserHandle.of(10));
+        createLauncherActivityInfo(TEST_PACKAGE_NAME_3, UserHandle.of(10));
     shadowOf(launcherApps).addActivity(USER_HANDLE, launcherActivityInfo1);
     shadowOf(launcherApps).addActivity(USER_HANDLE, launcherActivityInfo2);
     shadowOf(launcherApps).addActivity(UserHandle.of(10), launcherActivityInfo3);
@@ -250,17 +198,17 @@ public class ShadowLauncherAppsTest {
   }
 
   @Test
-  @Config(minSdk = S)
-  public void testGetActivityListS_getsActivitiesFromAllPackagesForUser() {
-    LauncherActivityInfo launcherActivityInfo =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME, USER_HANDLE);
-    LauncherActivityInfo launcherActivityInfo2 =
-        createLauncherActivityInfoS(TEST_PACKAGE_NAME_2, USER_HANDLE);
-    shadowOf(launcherApps).addActivity(USER_HANDLE, launcherActivityInfo);
-    shadowOf(launcherApps).addActivity(USER_HANDLE, launcherActivityInfo2);
+  @Config(minSdk = L)
+  public void testIsActivityEnabled() {
+    ComponentName c1 = new ComponentName(ApplicationProvider.getApplicationContext(), "Activity1");
+    ComponentName c2 = new ComponentName(ApplicationProvider.getApplicationContext(), "Activity2");
+    ComponentName c3 = new ComponentName("other", "Activity1");
+    assertThat(launcherApps.isActivityEnabled(c1, USER_HANDLE)).isFalse();
 
-    assertThat(launcherApps.getActivityList(null, USER_HANDLE))
-        .containsExactly(launcherActivityInfo, launcherActivityInfo2);
+    shadowOf(launcherApps).setActivityEnabled(USER_HANDLE, c1);
+    assertThat(launcherApps.isActivityEnabled(c1, USER_HANDLE)).isTrue();
+    assertThat(launcherApps.isActivityEnabled(c2, USER_HANDLE)).isFalse();
+    assertThat(launcherApps.isActivityEnabled(c3, USER_HANDLE)).isFalse();
   }
 
   @Test
@@ -402,6 +350,35 @@ public class ShadowLauncherAppsTest {
     assertThat(launcherApps.hasShortcutHostPermission()).isFalse();
   }
 
+  @Test
+  @Config(minSdk = P)
+  public void getSuspendedPackageLauncherExtras_returnsBundle() {
+    Bundle bundle = new Bundle();
+    bundle.putInt("suspended_app", 5);
+    shadowOf(launcherApps)
+        .addSuspendedPackageLauncherExtras(USER_HANDLE, TEST_PACKAGE_NAME_2, bundle);
+
+    assertThat(launcherApps.getSuspendedPackageLauncherExtras(TEST_PACKAGE_NAME_2, USER_HANDLE))
+        .isEqualTo(bundle);
+  }
+
+  @Test
+  @Config(minSdk = P)
+  public void getSuspendedPackageLauncherExtras_returnsEmptyBundle() {
+    Throwable throwable =
+        assertThrows(
+            NameNotFoundException.class,
+            () -> launcherApps.getSuspendedPackageLauncherExtras(TEST_PACKAGE_NAME, USER_HANDLE));
+
+    assertThat(throwable)
+        .hasMessageThat()
+        .isEqualTo(
+            "Suspended package extras for  "
+                + TEST_PACKAGE_NAME
+                + " not found for user "
+                + USER_HANDLE.getIdentifier());
+  }
+
   private List<ShortcutInfo> getPinnedShortcuts(String packageName, ComponentName activity) {
     ShortcutQuery query = new ShortcutQuery();
     query.setQueryFlags(ShortcutQuery.FLAG_MATCH_DYNAMIC | ShortcutQuery.FLAG_MATCH_PINNED);
@@ -410,31 +387,40 @@ public class ShadowLauncherAppsTest {
     return launcherApps.getShortcuts(query, Process.myUserHandle());
   }
 
-  private LauncherActivityInfo createLauncherActivityInfoS(String packageName, UserHandle user) {
-    ActivityInfo info = new ActivityInfo();
-    info.packageName = packageName;
-    info.name = packageName;
-    info.nonLocalizedLabel = packageName;
-    LauncherActivityInfoInternal launcherActivityInfoInternal =
-        new LauncherActivityInfoInternal(info, null);
-
-    return ReflectionHelpers.callConstructor(
-        LauncherActivityInfo.class,
-        ClassParameter.from(Context.class, ApplicationProvider.getApplicationContext()),
-        ClassParameter.from(UserHandle.class, user),
-        ClassParameter.from(LauncherActivityInfoInternal.class, launcherActivityInfoInternal));
-  }
-
-  private LauncherActivityInfo createLauncherActivityInfoPostN(
+  private LauncherActivityInfo createLauncherActivityInfo(
       String packageName, UserHandle userHandle) {
     ActivityInfo info = new ActivityInfo();
     info.packageName = packageName;
     info.name = packageName;
     info.nonLocalizedLabel = packageName;
-    return ReflectionHelpers.callConstructor(
-        LauncherActivityInfo.class,
-        ClassParameter.from(Context.class, ApplicationProvider.getApplicationContext()),
-        ClassParameter.from(ActivityInfo.class, info),
-        ClassParameter.from(UserHandle.class, userHandle));
+    if (RuntimeEnvironment.getApiLevel() <= R) {
+      return ReflectionHelpers.callConstructor(
+          LauncherActivityInfo.class,
+          ClassParameter.from(Context.class, ApplicationProvider.getApplicationContext()),
+          ClassParameter.from(ActivityInfo.class, info),
+          ClassParameter.from(UserHandle.class, userHandle));
+    } else if (RuntimeEnvironment.getApiLevel() <= TIRAMISU) {
+      LauncherActivityInfoInternal launcherActivityInfoInternal =
+          new LauncherActivityInfoInternal(info, null, userHandle);
+
+      return ReflectionHelpers.callConstructor(
+          LauncherActivityInfo.class,
+          ClassParameter.from(Context.class, ApplicationProvider.getApplicationContext()),
+          ClassParameter.from(UserHandle.class, userHandle),
+          ClassParameter.from(LauncherActivityInfoInternal.class, launcherActivityInfoInternal));
+    } else {
+
+      LauncherActivityInfoInternal launcherActivityInfoInternal =
+          ReflectionHelpers.callConstructor(
+              LauncherActivityInfoInternal.class,
+              ClassParameter.from(ActivityInfo.class, info),
+              ClassParameter.from(IncrementalStatesInfo.class, null),
+              ClassParameter.from(UserHandle.class, userHandle));
+
+      return ReflectionHelpers.callConstructor(
+          LauncherActivityInfo.class,
+          ClassParameter.from(Context.class, ApplicationProvider.getApplicationContext()),
+          ClassParameter.from(LauncherActivityInfoInternal.class, launcherActivityInfoInternal));
+    }
   }
 }
