@@ -12,7 +12,6 @@ import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
-import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.os.MessageQueue;
@@ -96,7 +95,7 @@ public class ShadowDisplayEventReceiver {
     return nativeInit(receiver, msgQueue);
   }
 
-  @Implementation(minSdk = UPSIDE_DOWN_CAKE)
+  @Implementation(minSdk = ShadowBuild.UPSIDE_DOWN_CAKE)
   protected static long nativeInit(
       WeakReference<DisplayEventReceiver> receiver,
       WeakReference<Object> vsyncEventData,
