@@ -304,6 +304,11 @@ public class ShadowBluetoothAdapter {
   }
 
   @Implementation
+  protected boolean disable(boolean persist) {
+    return disable();
+  }
+
+  @Implementation
   protected String getAddress() {
     return this.address;
   }
