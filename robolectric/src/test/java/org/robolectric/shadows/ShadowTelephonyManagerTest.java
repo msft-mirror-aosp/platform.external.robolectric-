@@ -27,6 +27,8 @@ import static android.telephony.TelephonyManager.CALL_STATE_OFFHOOK;
 import static android.telephony.TelephonyManager.CALL_STATE_RINGING;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_EVDO_0;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_LTE;
+import static android.telephony.emergency.EmergencyNumber.EMERGENCY_NUMBER_SOURCE_DATABASE;
+import static android.telephony.emergency.EmergencyNumber.EMERGENCY_SERVICE_CATEGORY_POLICE;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static org.junit.Assert.assertEquals;
@@ -74,10 +76,12 @@ import android.telephony.TelephonyManager.BootstrapAuthenticationCallback;
 import android.telephony.TelephonyManager.CellInfoCallback;
 import android.telephony.UiccSlotInfo;
 import android.telephony.VisualVoicemailSmsFilterSettings;
+import android.telephony.emergency.EmergencyNumber;
 import android.telephony.gba.UaSecurityProtocolIdentifier;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -371,6 +375,21 @@ public class ShadowTelephonyManagerTest {
     shadowOf(telephonyManager).setCellLocation(mockCellLocation);
     assertEquals(mockCellLocation, telephonyManager.getCellLocation());
     verify((CellLocationListener) callback).onCellLocationChanged(mockCellLocation);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void shouldGiveCallStateForSubscription() {
+    PhoneStateListener listener = mock(PhoneStateListener.class);
+    telephonyManager.listen(listener, LISTEN_CALL_STATE);
+
+    shadowOf(telephonyManager).setCallState(CALL_STATE_RINGING, "911");
+    assertEquals(CALL_STATE_RINGING, telephonyManager.getCallStateForSubscription());
+    verify(listener).onCallStateChanged(CALL_STATE_RINGING, "911");
+
+    shadowOf(telephonyManager).setCallState(CALL_STATE_OFFHOOK, "911");
+    assertEquals(CALL_STATE_OFFHOOK, telephonyManager.getCallStateForSubscription());
+    verify(listener).onCallStateChanged(CALL_STATE_OFFHOOK, null);
   }
 
   @Test
@@ -803,6 +822,24 @@ public class ShadowTelephonyManagerTest {
   }
 
   @Test
+  @Config(minSdk = S)
+  public void setDataEnabledForReasonChangesIsDataEnabledForReason() {
+    int correctReason = TelephonyManager.DATA_ENABLED_REASON_POLICY;
+    int incorrectReason = TelephonyManager.DATA_ENABLED_REASON_USER;
+
+    assertThat(telephonyManager.isDataEnabledForReason(correctReason)).isTrue();
+    assertThat(telephonyManager.isDataEnabledForReason(incorrectReason)).isTrue();
+
+    telephonyManager.setDataEnabledForReason(correctReason, false);
+    assertThat(telephonyManager.isDataEnabledForReason(correctReason)).isFalse();
+    assertThat(telephonyManager.isDataEnabledForReason(incorrectReason)).isTrue();
+
+    telephonyManager.setDataEnabledForReason(correctReason, true);
+    assertThat(telephonyManager.isDataEnabledForReason(correctReason)).isTrue();
+    assertThat(telephonyManager.isDataEnabledForReason(incorrectReason)).isTrue();
+  }
+
+  @Test
   public void setDataStateChangesDataState() {
     assertThat(telephonyManager.getDataState()).isEqualTo(TelephonyManager.DATA_DISCONNECTED);
     shadowOf(telephonyManager).setDataState(TelephonyManager.DATA_CONNECTING);
@@ -1067,5 +1104,37 @@ public class ShadowTelephonyManagerTest {
   @Config(minSdk = O)
   public void getEmergencyCallback_notSet_returnsFalse() {
     assertThat(telephonyManager.getEmergencyCallbackMode()).isFalse();
+  }
+
+  @Test
+  @Config(minSdk = R)
+  public void getEmergencyNumbersList_notSet_returnsEmptyList() {
+    assertThat(telephonyManager.getEmergencyNumberList()).isEmpty();
+  }
+
+  @Test
+  @Config(minSdk = R)
+  public void getEmergencyNumbersList_wasSet_returnsCorrectList() throws Exception {
+    EmergencyNumber emergencyNumber =
+        EmergencyNumber.class
+            .getConstructor(
+                String.class,
+                String.class,
+                String.class,
+                int.class,
+                List.class,
+                int.class,
+                int.class)
+            .newInstance(
+                "911",
+                "us",
+                "30",
+                EMERGENCY_NUMBER_SOURCE_DATABASE,
+                ImmutableList.of(),
+                EMERGENCY_SERVICE_CATEGORY_POLICE,
+                EmergencyNumber.EMERGENCY_CALL_ROUTING_NORMAL);
+    ShadowTelephonyManager.setEmergencyNumberList(
+        ImmutableMap.of(0, ImmutableList.of(emergencyNumber)));
+    assertThat(telephonyManager.getEmergencyNumberList().get(0)).containsExactly(emergencyNumber);
   }
 }
