@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
@@ -59,15 +58,19 @@ public class ShadowNativeFontsFontFamily {
       FontFamilyBuilderNatives.nAddFont(builderPtr, fontPtr);
     }
 
-    @Implementation(maxSdk=TIRAMISU)
+    @Implementation(maxSdk = TIRAMISU)
     protected static long nBuild(
         long builderPtr, String langTags, int variant, boolean isCustomFallback) {
       return FontFamilyBuilderNatives.nBuild(builderPtr, langTags, variant, isCustomFallback);
     }
 
-    @Implementation(minSdk=UPSIDE_DOWN_CAKE)
+    @Implementation(minSdk = UPSIDE_DOWN_CAKE)
     protected static long nBuild(
-        long builderPtr, String langTags, int variant, boolean isCustomFallback, boolean isDefaultFallback) {
+        long builderPtr,
+        String langTags,
+        int variant,
+        boolean isCustomFallback,
+        boolean isDefaultFallback) {
       return nBuild(builderPtr, langTags, variant, isCustomFallback);
     }
 
