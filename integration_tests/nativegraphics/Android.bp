@@ -43,13 +43,6 @@ android_robolectric_test {
         "src/**/*.kt",
         "src/**/*.java",
     ],
-    exclude_srcs: [
-        // TODO(b/270898298): Enable this after fixing setupHardwareAcceleratedActivity for SDK 33.
-        "src/test/java/org/robolectric/integrationtests/nativegraphics/HardwareAcceleratedActivityRenderTest.java",
-        // TODO(b/270897720): Enable this after fixing smoothScrollTo_usesRealCode_whenRNGEnabled
-        // for SDK 33.
-        "src/test/java/org/robolectric/integrationtests/nativegraphics/ScrollViewTest.java",
-    ],
     static_libs: [
         "androidx.core_core",
         "androidx.test.uiautomator_uiautomator",
