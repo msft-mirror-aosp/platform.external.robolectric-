@@ -4,20 +4,6 @@ import org.robolectric.gradle.RoboJavaModulePlugin
 apply plugin: RoboJavaModulePlugin
 apply plugin: DeployedRoboJavaModulePlugin
 
-processResources {
-    filesMatching("**/robolectric-version.properties") {
-        filter { String line ->
-            return line.replaceAll(/\$\{project.version\}/, project.version)
-        }
-    }
-}
-
-configurations {
-    shadow
-}
-
-project.sourceSets.test.compileClasspath += configurations.shadow
-
 dependencies {
     annotationProcessor "com.google.auto.service:auto-service:$autoServiceVersion"
     annotationProcessor "com.google.errorprone:error_prone_core:$errorproneVersion"
@@ -39,7 +25,7 @@ dependencies {
     api project(":shadows:framework")
 
     implementation 'org.conscrypt:conscrypt-openjdk-uber:2.5.2'
-    api "org.bouncycastle:bcprov-jdk15on:1.70"
+    api "org.bouncycastle:bcprov-jdk18on:1.72"
     compileOnly "com.google.code.findbugs:jsr305:3.0.2"
 
     compileOnly AndroidSdk.MAX_SDK.coordinates
@@ -53,20 +39,12 @@ dependencies {
     testImplementation "org.mockito:mockito-core:${mockitoVersion}"
     testImplementation "org.hamcrest:hamcrest-junit:2.0.0.0"
     testImplementation "androidx.test:core:$axtCoreVersion@aar"
-    testImplementation "androidx.lifecycle:lifecycle-common:2.5.1"
     testImplementation "androidx.test.ext:junit:$axtJunitVersion@aar"
     testImplementation "androidx.test.ext:truth:$axtTruthVersion@aar"
     testImplementation "androidx.test:runner:$axtRunnerVersion@aar"
     testImplementation("com.google.guava:guava:$guavaJREVersion")
     testCompileOnly AndroidSdk.MAX_SDK.coordinates // compile against latest Android SDK
     testRuntimeOnly AndroidSdk.MAX_SDK.coordinates // run against whatever this JDK supports
-}
-
-test {
-    if (project.hasProperty('maxParallelForks'))
-        maxParallelForks = project.maxParallelForks as int
-    if (project.hasProperty('forkEvery'))
-        forkEvery = project.forkEvery as int
 }
 
 project.apply plugin: CheckApiChangesPlugin
