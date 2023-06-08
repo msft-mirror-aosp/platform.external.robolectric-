@@ -2,6 +2,7 @@ package org.robolectric.android.internal;
 
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.O;
 import static org.robolectric.shadow.api.Shadow.newInstanceOf;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -48,6 +49,8 @@ import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.GraphicsMode.Mode;
 import org.robolectric.annotation.experimental.LazyApplication.LazyLoad;
 import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.internal.ResourcesMode;
@@ -145,6 +148,8 @@ public class AndroidTestEnvironment implements TestEnvironment {
       ShadowLegacyLooper.internalInitializeBackgroundThreadScheduler();
     }
 
+    exportNativeruntimeProperties();
+
     if (!loggingInitialized) {
       ShadowLog.setupLogging();
       loggingInitialized = true;
@@ -170,6 +175,8 @@ public class AndroidTestEnvironment implements TestEnvironment {
     DisplayMetrics displayMetrics = new DisplayMetrics();
 
     Bootstrap.applyQualifiers(config.qualifiers(), apiLevel, androidConfiguration, displayMetrics);
+
+    androidConfiguration.fontScale = config.fontScale();
 
     if (Boolean.getBoolean("robolectric.nativeruntime.enableGraphics")) {
       Bitmap.setDefaultDensity(displayMetrics.densityDpi);
@@ -692,8 +699,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      String receiverClassName = replaceLastDotWith$IfInnerStaticClass(receiver.getName());
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiver.getName()), filter);
     }
   }
 
@@ -709,5 +715,12 @@ public class AndroidTestEnvironment implements TestEnvironment {
       return buffer.toString();
     }
     return receiverClassName;
+  }
+
+  private static void exportNativeruntimeProperties() {
+    GraphicsMode.Mode graphicsMode = ConfigurationRegistry.get(GraphicsMode.Mode.class);
+    System.setProperty(
+        "robolectric.nativeruntime.enableGraphics",
+        Boolean.toString(graphicsMode == Mode.NATIVE && RuntimeEnvironment.getApiLevel() >= O));
   }
 }
