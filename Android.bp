@@ -13,7 +13,10 @@
 // limitations under the License.
 
 package {
-    default_visibility: [":__subpackages__"],
+    default_visibility: [
+        "//external/robolectric:__subpackages__",
+        "//test/robolectric-extensions:__subpackages__",
+    ],
     default_applicable_licenses: ["external_robolectric_license"],
 }
 
@@ -33,7 +36,10 @@ package {
 // See: http://go/android-license-faq
 license {
     name: "external_robolectric_license",
-    visibility: [":__subpackages__"],
+    visibility: [
+      ":__subpackages__",
+      "//test/robolectric-extensions:__subpackages__",
+    ],
     license_kinds: [
         "SPDX-license-identifier-Apache-2.0",
         "SPDX-license-identifier-MIT",
@@ -111,6 +117,7 @@ java_library_host {
     visibility: [
         ":__subpackages__",
         "//prebuilts/misc/common/robolectric",
+        "//test/robolectric-extensions:__subpackages__",
     ],
 }
 
@@ -149,10 +156,12 @@ java_library_host {
     name: "Robolectric_all_upstream",
 
     static_libs: [
+        "Robolectric-aosp-plugins",
         "robolectric_meta_service_file",
         "Robolectric_shadows_httpclient_upstream",
         "Robolectric_shadows_framework_upstream",
         "Robolectric_shadows_multidex_upstream",
+        "Robolectric_shadows_versioning_upstream",
         "Robolectric_robolectric_upstream",
         "Robolectric_annotations_upstream",
         "Robolectric_resources_upstream",
@@ -194,6 +203,7 @@ java_host_for_device {
       "//prebuilts/sdk/current/aaos-libs:__pkg__",
       "//packages/apps/TV/tests/common:__pkg__",
       //robolectric tests
+      "//platform_testing/libraries/runner:__pkg__",
       "//vendor:__subpackages__",
       "//platform_testing/robolab/roboStandaloneProj/tests:__pkg__",
       "//external/mobile-data-download/javatests:__pkg__",
