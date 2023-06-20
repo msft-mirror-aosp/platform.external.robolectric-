@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
 import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
@@ -88,20 +87,26 @@ public class ShadowDisplayManagerGlobal {
             reflector(DisplayManagerGlobalReflector.class, instance);
     displayManagerGlobal.setDm(displayManager);
     displayManagerGlobal.setLock(new Object());
-
-    List displayListeners = new CopyOnWriteArrayList();
-    try {
-      // TODO: rexhoffman when we have sufficient detection in android dev replace
-      // this with a version check.
-      Field f = DisplayManagerGlobal.class.getDeclaredField("mDisplayListeners");
-      if (f.getType().isAssignableFrom(ArrayList.class)) {
-        displayListeners = new ArrayList();
-      }
-    } catch (NoSuchFieldException e) {
-    }
+    List<Handler> displayListeners = createDisplayListeners();
     displayManagerGlobal.setDisplayListeners(displayListeners);
     displayManagerGlobal.setDisplayInfoCache(new SparseArray<>());
     return instance;
+  }
+
+  private static List<Handler> createDisplayListeners() {
+    try {
+      // The type for mDisplayListeners was changed from ArrayList to CopyOnWriteArrayList
+      // in some branches of T and U, so we need to reflect on DisplayManagerGlobal class
+      // to check the type of mDisplayListeners member before initializing appropriately.
+      Field f = DisplayManagerGlobal.class.getDeclaredField("mDisplayListeners");
+      if (f.getType().isAssignableFrom(ArrayList.class)) {
+        return new ArrayList<>();
+      } else {
+        return new CopyOnWriteArrayList<>();
+      }
+    } catch (NoSuchFieldException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @VisibleForTesting
