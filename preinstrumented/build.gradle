@@ -17,11 +17,12 @@ java {
 }
 
 dependencies {
-    implementation "com.google.guava:guava:$guavaJREVersion"
+    implementation libs.guava
     implementation project(":sandbox")
+    implementation project(":shadows:versioning")
 }
 
-task instrumentAll {
+tasks.register('instrumentAll') {
     dependsOn ':prefetchSdks'
     dependsOn 'build'
 
@@ -42,11 +43,11 @@ task instrumentAll {
     }
 }
 
-task('sourcesJar', type: Jar) {
+tasks.register('sourcesJar', Jar) {
     archiveClassifier = "sources"
 }
 
-task('javadocJar', type: Jar) {
+tasks.register('javadocJar', Jar) {
     archiveClassifier = "javadoc"
 }
 
@@ -102,8 +103,8 @@ if (System.getenv('PUBLISH_PREINSTRUMENTED_JARS') == "true") {
                 url = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
 
                 credentials {
-                    username = System.properties["sonatype-login"] ?: System.env['sonatypeLogin']
-                    password = System.properties["sonatype-password"] ?: System.env['sonatypePassword']
+                    username = System.properties["sonatype-login"] ?: System.env['SONATYPE_LOGIN']
+                    password = System.properties["sonatype-password"] ?: System.env['SONATYPE_PASSWORD']
                 }
             }
         }

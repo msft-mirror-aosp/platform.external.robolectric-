@@ -110,7 +110,6 @@ public class ShadowDisplayEventReceiver {
   protected static void nativeDispose(long receiverPtr) {
     NativeDisplayEventReceiver receiver = nativeObjRegistry.unregister(receiverPtr);
     if (receiver != null) {
-      receiver.dispose();
     }
   }
 

@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.annotation.Nullable;
-import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
