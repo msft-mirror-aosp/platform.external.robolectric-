@@ -31,6 +31,7 @@ public class ShadowBluetoothGattTest {
   private static final String ACTION_DISCOVER = "DISCOVER";
   private static final String ACTION_READ = "READ";
   private static final String ACTION_WRITE = "WRITE";
+  private static final String REMOTE_ADDRESS = "R-A";
 
   private int resultStatus = INITIAL_VALUE;
   private int resultState = INITIAL_VALUE;
@@ -274,6 +275,15 @@ public class ShadowBluetoothGattTest {
 
   @Test
   @Config(minSdk = O)
+  public void getService_afterAddService() {
+    shadowOf(bluetoothGatt).addDiscoverableService(service1);
+    assertThat(bluetoothGatt.discoverServices()).isFalse();
+    assertThat(bluetoothGatt.getService(service1.getUuid())).isEqualTo(service1);
+    assertThat(bluetoothGatt.getService(service2.getUuid())).isNull();
+  }
+
+  @Test
+  @Config(minSdk = O)
   public void discoverServices_clearsService() {
     shadowOf(bluetoothGatt).setGattCallback(callback);
     shadowOf(bluetoothGatt).addDiscoverableService(service1);
@@ -470,5 +480,104 @@ public class ShadowBluetoothGattTest {
     assertThat(resultAction).isEqualTo(ACTION_WRITE);
     assertThat(resultCharacteristic).isEqualTo(characteristic);
     assertThat(shadowOf(bluetoothGatt).getLatestWrittenBytes()).isEqualTo(CHARACTERISTIC_VALUE);
+  }
+
+  @Test
+  public void test_getBluetoothConnectionManager() {
+    assertThat(shadowOf(bluetoothGatt).getBluetoothConnectionManager()).isNotNull();
+  }
+
+  @Test
+  public void test_notifyConnection_connects() {
+    shadowOf(bluetoothGatt).notifyConnection(REMOTE_ADDRESS);
+    assertThat(shadowOf(bluetoothGatt).isConnected()).isTrue();
+    assertThat(
+            shadowOf(bluetoothGatt)
+                .getBluetoothConnectionManager()
+                .hasGattClientConnection(REMOTE_ADDRESS))
+        .isTrue();
+    assertThat(resultStatus).isEqualTo(INITIAL_VALUE);
+    assertThat(resultState).isEqualTo(INITIAL_VALUE);
+    assertThat(resultAction).isNull();
+  }
+
+  @Test
+  public void test_notifyConnection_connectsWithCallbackSet() {
+    shadowOf(bluetoothGatt).setGattCallback(callback);
+    shadowOf(bluetoothGatt).notifyConnection(REMOTE_ADDRESS);
+    assertThat(shadowOf(bluetoothGatt).isConnected()).isTrue();
+    assertThat(
+            shadowOf(bluetoothGatt)
+                .getBluetoothConnectionManager()
+                .hasGattClientConnection(REMOTE_ADDRESS))
+        .isTrue();
+    assertThat(resultStatus).isEqualTo(BluetoothGatt.GATT_SUCCESS);
+    assertThat(resultState).isEqualTo(BluetoothProfile.STATE_CONNECTED);
+    assertThat(resultAction).isEqualTo(ACTION_CONNECTION);
+  }
+
+  @Test
+  public void test_notifyDisconnection_disconnects() {
+    shadowOf(bluetoothGatt).notifyDisconnection(REMOTE_ADDRESS);
+    assertThat(shadowOf(bluetoothGatt).isConnected()).isFalse();
+    assertThat(
+            shadowOf(bluetoothGatt)
+                .getBluetoothConnectionManager()
+                .hasGattClientConnection(REMOTE_ADDRESS))
+        .isFalse();
+    assertThat(resultStatus).isEqualTo(INITIAL_VALUE);
+    assertThat(resultState).isEqualTo(INITIAL_VALUE);
+    assertThat(resultAction).isNull();
+  }
+
+  @Test
+  public void test_notifyDisconnection_disconnectsWithCallbackSet() {
+    shadowOf(bluetoothGatt).setGattCallback(callback);
+    shadowOf(bluetoothGatt).notifyDisconnection(REMOTE_ADDRESS);
+    assertThat(shadowOf(bluetoothGatt).isConnected()).isFalse();
+    assertThat(
+            shadowOf(bluetoothGatt)
+                .getBluetoothConnectionManager()
+                .hasGattClientConnection(REMOTE_ADDRESS))
+        .isFalse();
+    assertThat(resultStatus).isEqualTo(INITIAL_VALUE);
+    assertThat(resultState).isEqualTo(INITIAL_VALUE);
+    assertThat(resultAction).isNull();
+  }
+
+  @Test
+  public void test_notifyDisconnection_disconnectsWithCallbackSet_connectedInitially() {
+    shadowOf(bluetoothGatt).setGattCallback(callback);
+    shadowOf(bluetoothGatt).notifyConnection(REMOTE_ADDRESS);
+    shadowOf(bluetoothGatt).notifyDisconnection(REMOTE_ADDRESS);
+    assertThat(
+            shadowOf(bluetoothGatt)
+                .getBluetoothConnectionManager()
+                .hasGattClientConnection(REMOTE_ADDRESS))
+        .isFalse();
+    assertThat(shadowOf(bluetoothGatt).isConnected()).isFalse();
+    assertThat(resultStatus).isEqualTo(BluetoothGatt.GATT_SUCCESS);
+    assertThat(resultState).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+    assertThat(resultAction).isEqualTo(ACTION_CONNECTION);
+  }
+
+  @Test
+  @Config(minSdk = O)
+  public void allowCharacteristicNotification_canSetNotification() {
+    service1.addCharacteristic(characteristicWithReadProperty);
+    shadowOf(bluetoothGatt).addDiscoverableService(service1);
+    shadowOf(bluetoothGatt).allowCharacteristicNotification(characteristicWithReadProperty);
+    assertThat(bluetoothGatt.setCharacteristicNotification(characteristicWithReadProperty, true))
+        .isTrue();
+  }
+
+  @Test
+  @Config(minSdk = O)
+  public void disallowCharacteristicNotification_cannotSetNotification() {
+    service1.addCharacteristic(characteristicWithReadProperty);
+    shadowOf(bluetoothGatt).addDiscoverableService(service1);
+    shadowOf(bluetoothGatt).disallowCharacteristicNotification(characteristicWithReadProperty);
+    assertThat(bluetoothGatt.setCharacteristicNotification(characteristicWithReadProperty, true))
+        .isFalse();
   }
 }
