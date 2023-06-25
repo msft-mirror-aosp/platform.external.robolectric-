@@ -11,6 +11,7 @@ import android.view.SurfaceControl;
 import android.view.SurfaceSession;
 import dalvik.system.CloseGuard;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.ReflectorObject;
@@ -82,6 +83,13 @@ public class ShadowSurfaceControl {
 
   void initializeNativeObject() {
     surfaceControlReflector.setNativeObject(nativeObject.incrementAndGet());
+    if (RuntimeEnvironment.getApiLevel() >= ShadowBuild.UPSIDE_DOWN_CAKE) {
+      try {
+        surfaceControlReflector.setFreeNativeResources(() -> {});
+      } catch(Exception e) {
+        // tm branches not yet have mFreeNativeResources added while in partial U state
+      }
+    }
   }
 
   @ForType(SurfaceControl.class)
@@ -94,5 +102,8 @@ public class ShadowSurfaceControl {
 
     @Direct
     void finalize();
+
+    @Accessor("mFreeNativeResources")
+    void setFreeNativeResources(Runnable runnable);
   }
 }
