@@ -722,10 +722,13 @@ public class AndroidTestEnvironment implements TestEnvironment {
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      // TODO(b/288311989); The newBroadcastReceiverFromP will break ClockworkSystemUIRoboTests
-      //  during "instantiateReceiver".
-      // Temporarily block invocation of "newBroadcastReceiverFromP" till it's resolved.
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiver.getName()), filter);
+      String receiverClassName = receiver.getName();
+      if (loadedApk != null && RuntimeEnvironment.getApiLevel() >= P) {
+        application.registerReceiver(
+            newBroadcastReceiverFromP(receiverClassName, loadedApk), filter);
+      } else {
+        application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      }
     }
   }
 
