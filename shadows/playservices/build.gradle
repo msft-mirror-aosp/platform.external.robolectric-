@@ -14,25 +14,20 @@ shadows {
 dependencies {
     compileOnly project(":shadows:framework")
     api project(":annotations")
-    api "com.google.guava:guava:$guavaJREVersion"
+    api libs.guava
 
-    compileOnly "androidx.fragment:fragment:1.2.0"
-    compileOnly "com.google.android.gms:play-services-base:8.4.0"
-    compileOnly "com.google.android.gms:play-services-basement:8.4.0"
+    compileOnly libs.bundles.play.services.base.for.shadows
 
     compileOnly AndroidSdk.MAX_SDK.coordinates
 
     testCompileOnly AndroidSdk.MAX_SDK.coordinates
-    testCompileOnly "com.google.android.gms:play-services-base:8.4.0"
-    testCompileOnly "com.google.android.gms:play-services-basement:8.4.0"
+    testCompileOnly libs.bundles.play.services.base.for.shadows
 
     testImplementation project(":robolectric")
-    testImplementation "junit:junit:$junitVersion"
-    testImplementation "com.google.truth:truth:$truthVersion"
-    testImplementation "org.mockito:mockito-core:$mockitoVersion"
-    testRuntimeOnly "androidx.fragment:fragment:1.2.0"
-    testRuntimeOnly "com.google.android.gms:play-services-base:8.4.0"
-    testRuntimeOnly "com.google.android.gms:play-services-basement:8.4.0"
+    testImplementation libs.junit4
+    testImplementation libs.truth
+    testImplementation libs.mockito
+    testRuntimeOnly libs.bundles.play.services.base.for.shadows
 
     testRuntimeOnly AndroidSdk.MAX_SDK.coordinates
 }
