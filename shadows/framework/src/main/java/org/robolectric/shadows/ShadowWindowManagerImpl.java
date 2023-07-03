@@ -112,7 +112,7 @@ public class ShadowWindowManagerImpl extends ShadowWindowManager {
     final Rect stableInsets = new Rect();
     final DisplayCutout.ParcelableWrapper displayCutout = new DisplayCutout.ParcelableWrapper();
     final InsetsState insetsState = new InsetsState();
-    final boolean alwaysConsumeSystemBars = true;
+    final boolean alwaysConsumeSystemBars = false;
 
     final boolean isScreenRound = context.getResources().getConfiguration().isScreenRound();
     if (getApiLevel() <= R
@@ -130,7 +130,6 @@ public class ShadowWindowManagerImpl extends ShadowWindowManager {
           null);
     } else {
       return new WindowInsets.Builder()
-          .setAlwaysConsumeSystemBars(alwaysConsumeSystemBars)
           .setRound(isScreenRound)
           .setSystemWindowInsets(Insets.of(systemWindowInsets))
           .setStableInsets(Insets.of(stableInsets))
