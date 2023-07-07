@@ -84,11 +84,7 @@ public class ShadowSurfaceControl {
   void initializeNativeObject() {
     surfaceControlReflector.setNativeObject(nativeObject.incrementAndGet());
     if (RuntimeEnvironment.getApiLevel() >= ShadowBuild.UPSIDE_DOWN_CAKE) {
-      try {
-        surfaceControlReflector.setFreeNativeResources(() -> {});
-      } catch(Exception e) {
-        // tm branches not yet have mFreeNativeResources added while in partial U state
-      }
+      surfaceControlReflector.setFreeNativeResources(() -> {});
     }
   }
 
