@@ -12,6 +12,7 @@ import android.os.Message;
 import android.os.MessageQueue.IdleHandler;
 import android.os.SystemClock;
 import android.util.Log;
+import com.google.common.base.Preconditions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,6 +58,8 @@ public final class ShadowPausedLooper extends ShadowLooper {
   // Keep reference to all created Loopers so they can be torn down after test
   private static Set<Looper> loopingLoopers =
       Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<Looper, Boolean>()));
+
+  private static boolean ignoreUncaughtExceptions = false;
 
   @RealObject private Looper realLooper;
   private boolean isPaused = false;
@@ -317,6 +320,51 @@ public final class ShadowPausedLooper extends ShadowLooper {
   }
 
   /**
+   * By default Robolectric will put Loopers that throw uncaught exceptions in their loop method
+   * into an error state, where any future posting to the looper's queue will throw an error.
+   *
+   * <p>This API allows you to disable this behavior. Note this is a permanent setting - it is not
+   * reset between tests.
+   *
+   * @deprecated this method only exists to accommodate legacy tests with preexisting issues.
+   *     Silently discarding exceptions is not recommended, and can lead to deadlocks.
+   */
+  @Deprecated
+  public static void setIgnoreUncaughtExceptions(boolean shouldIgnore) {
+    ignoreUncaughtExceptions = shouldIgnore;
+  }
+
+  /**
+   * Shadow loop to handle uncaught exceptions. Without this logic an uncaught exception on a looper
+   * thread will cause idle() to deadlock.
+   */
+  @Implementation
+  protected static void loop() {
+    try {
+      reflector(LooperReflector.class).loop();
+    } catch (Exception e) {
+      Looper realLooper = Preconditions.checkNotNull(Looper.myLooper());
+      ShadowPausedMessageQueue shadowQueue = Shadow.extract(realLooper.getQueue());
+
+      if (ignoreUncaughtExceptions) {
+        // ignore
+      } else {
+        shadowQueue.setUncaughtException(e);
+        // release any ControlRunnables currently in queue to prevent deadlocks
+        shadowQueue.drainQueue(
+            input -> {
+              if (input instanceof ControlRunnable) {
+                ((ControlRunnable) input).runLatch.countDown();
+                return true;
+              }
+              return false;
+            });
+      }
+      throw e;
+    }
+  }
+
+  /**
    * If the given {@code lastMessageRead} is not null and the queue is now idle, get the idle
    * handlers and run them. This synchronization mirrors what happens in the real message queue
    * next() method, but does not block after running the idle handlers.
@@ -345,12 +393,32 @@ public final class ShadowPausedLooper extends ShadowLooper {
   private abstract static class ControlRunnable implements Runnable {
 
     protected final CountDownLatch runLatch = new CountDownLatch(1);
+    private volatile RuntimeException exception;
 
-    public void waitTillComplete() {
+    @Override
+    public void run() {
+      try {
+        doRun();
+      } catch (RuntimeException e) {
+        if (!ignoreUncaughtExceptions) {
+          exception = e;
+        }
+        throw e;
+      } finally {
+        runLatch.countDown();
+      }
+    }
+
+    protected abstract void doRun() throws RuntimeException;
+
+    public void waitTillComplete() throws RuntimeException {
       try {
         runLatch.await();
       } catch (InterruptedException e) {
         Log.w("ShadowPausedLooper", "wait till idle interrupted");
+      }
+      if (exception != null) {
+        throw exception;
       }
     }
   }
@@ -358,8 +426,7 @@ public final class ShadowPausedLooper extends ShadowLooper {
   private class IdlingRunnable extends ControlRunnable {
 
     @Override
-    public void run() {
-      try {
+    public void doRun() {
         while (true) {
           Message msg = getNextExecutableMessage();
           if (msg == null) {
@@ -369,26 +436,20 @@ public final class ShadowPausedLooper extends ShadowLooper {
           shadowMsg(msg).recycleUnchecked();
           triggerIdleHandlersIfNeeded(msg);
         }
-      } finally {
-        runLatch.countDown();
-      }
     }
   }
 
   private class RunOneRunnable extends ControlRunnable {
 
     @Override
-    public void run() {
-      try {
+    public void doRun() {
+
         Message msg = shadowQueue().getNextIgnoringWhen();
         if (msg != null) {
           SystemClock.setCurrentTimeMillis(shadowMsg(msg).getWhen());
           msg.getTarget().dispatchMessage(msg);
           triggerIdleHandlersIfNeeded(msg);
         }
-      } finally {
-        runLatch.countDown();
-      }
     }
   }
 
@@ -408,6 +469,8 @@ public final class ShadowPausedLooper extends ShadowLooper {
       }
       looperExecutor.execute(runnable);
       runnable.waitTillComplete();
+      // throw immediately if looper died while executing tasks
+      shadowQueue().checkQueueState();
     }
   }
 
@@ -422,6 +485,7 @@ public final class ShadowPausedLooper extends ShadowLooper {
 
     @Override
     public void execute(Runnable runnable) {
+      shadowQueue().checkQueueState();
       executionQueue.add(runnable);
     }
 
@@ -435,18 +499,22 @@ public final class ShadowPausedLooper extends ShadowLooper {
           Runnable runnable = executionQueue.take();
           runnable.run();
         } catch (InterruptedException e) {
-          // ignore
+          // ignored
         }
       }
+    }
+
+    @Override
+    protected void doRun() throws RuntimeException {
+      throw new UnsupportedOperationException();
     }
   }
 
   private class UnPauseRunnable extends ControlRunnable {
     @Override
-    public void run() {
+    public void doRun() {
       setLooperExecutor(new HandlerExecutor(new Handler(realLooper)));
       isPaused = false;
-      runLatch.countDown();
     }
   }
 
@@ -478,5 +546,8 @@ public final class ShadowPausedLooper extends ShadowLooper {
 
     @Direct
     void quitSafely();
+
+    @Direct
+    void loop();
   }
 }

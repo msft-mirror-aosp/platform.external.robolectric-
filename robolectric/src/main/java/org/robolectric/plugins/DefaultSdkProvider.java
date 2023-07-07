@@ -1,26 +1,5 @@
 package org.robolectric.plugins;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
-import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
-import static android.os.Build.VERSION_CODES.M;
-import static android.os.Build.VERSION_CODES.N;
-import static android.os.Build.VERSION_CODES.N_MR1;
-import static android.os.Build.VERSION_CODES.O;
-import static android.os.Build.VERSION_CODES.O_MR1;
-import static android.os.Build.VERSION_CODES.P;
-import static android.os.Build.VERSION_CODES.Q;
-import static android.os.Build.VERSION_CODES.R;
-import static android.os.Build.VERSION_CODES.S;
-import static android.os.Build.VERSION_CODES.S_V2;
-import static android.os.Build.VERSION_CODES.TIRAMISU;
-import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
-
-import android.os.Build;
-
 import com.google.auto.service.AutoService;
 import com.google.common.base.Preconditions;
 import java.net.URL;
@@ -38,6 +17,26 @@ import org.robolectric.internal.dependency.DependencyResolver;
 import org.robolectric.pluginapi.Sdk;
 import org.robolectric.pluginapi.SdkProvider;
 import org.robolectric.util.Util;
+import static android.os.Build.VERSION_CODES.JELLY_BEAN;
+import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
+import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
+import static android.os.Build.VERSION_CODES.KITKAT;
+import static android.os.Build.VERSION_CODES.LOLLIPOP;
+import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
+import static android.os.Build.VERSION_CODES.M;
+import static android.os.Build.VERSION_CODES.N;
+import static android.os.Build.VERSION_CODES.N_MR1;
+import static android.os.Build.VERSION_CODES.O;
+import static android.os.Build.VERSION_CODES.O_MR1;
+import static android.os.Build.VERSION_CODES.P;
+import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.S_V2;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
+
+import android.os.Build;
 
 /**
  * Robolectric's default {@link SdkProvider}.
@@ -85,8 +84,6 @@ public class DefaultSdkProvider implements SdkProvider {
     knownSdks.put(S, new DefaultSdk(S, "12", "7732740", "REL", 9));
     knownSdks.put(S_V2, new DefaultSdk(S_V2, "12.1", "8229987", "REL", 9));
     knownSdks.put(TIRAMISU, new DefaultSdk(TIRAMISU, "13", "9030017", "Tiramisu", 9));
-    // TODO(rexhoffman): should this have a dedicated mechanism?  Should we maintain a known good version?
-    knownSdks.put(CUR_DEVELOPMENT, new DefaultSdk(CUR_DEVELOPMENT, "current", "r0", "UpsideDownCake", 9));
   }
 
   @Override

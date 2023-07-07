@@ -2,6 +2,7 @@ package org.robolectric.shadows;
 
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O_MR1;
+import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 import static org.robolectric.util.ReflectionHelpers.ClassParameter.from;
@@ -26,7 +27,6 @@ import java.lang.reflect.Proxy;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import javax.annotation.Nonnull;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
@@ -34,6 +34,7 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.annotation.ReflectorObject;
 import org.robolectric.annotation.Resetter;
+import org.robolectric.util.Logger;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.ForType;
@@ -157,7 +158,12 @@ public class ShadowActivityThread {
   /** Update's ActivityThread's list of active Activities */
   void registerActivityLaunch(
       Intent intent, ActivityInfo activityInfo, Activity activity, IBinder token) {
-    ActivityClientRecord record = new ActivityClientRecord();
+    ActivityClientRecord record;
+    if (RuntimeEnvironment.getApiLevel() >= P) {
+      record = new ActivityClientRecord();
+    } else {
+      record = ReflectionHelpers.callConstructor(ActivityClientRecord.class);
+    }
     ActivityClientRecordReflector recordReflector =
         reflector(ActivityClientRecordReflector.class, record);
     recordReflector.setToken(token);
@@ -275,7 +281,12 @@ public class ShadowActivityThread {
   @Resetter
   public static void reset() {
     Object activityThread = RuntimeEnvironment.getActivityThread();
-    Objects.requireNonNull(activityThread, "ShadowActivityThread.reset: ActivityThread not set");
-    reflector(_ActivityThread_.class, activityThread).getActivities().clear();
+    if (activityThread == null) {
+      Logger.warn(
+          "RuntimeEnvironment.getActivityThread() is null, an error likely occurred during test"
+              + " initialization.");
+    } else {
+      reflector(_ActivityThread_.class, activityThread).getActivities().clear();
+    }
   }
 }

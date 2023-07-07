@@ -34,6 +34,7 @@ import android.app.usage.IUsageStatsManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.IBluetooth;
 import android.bluetooth.IBluetoothManager;
+import android.companion.ICompanionDeviceManager;
 import android.content.Context;
 import android.content.IClipboard;
 import android.content.IRestrictionsManager;
@@ -41,6 +42,7 @@ import android.content.integrity.IAppIntegrityManager;
 import android.content.pm.ICrossProfileApps;
 import android.content.pm.IShortcutService;
 import android.content.rollback.IRollbackManager;
+import android.hardware.ISensorPrivacyManager;
 import android.hardware.biometrics.IAuthService;
 import android.hardware.biometrics.IBiometricService;
 import android.hardware.fingerprint.IFingerprintService;
@@ -57,6 +59,7 @@ import android.net.IIpSecService;
 import android.net.INetworkPolicyManager;
 import android.net.INetworkScoreService;
 import android.net.ITetheringConnector;
+import android.net.IVpnManager;
 import android.net.nsd.INsdManager;
 import android.net.vcn.IVcnManagementService;
 import android.net.wifi.IWifiManager;
@@ -86,6 +89,7 @@ import android.view.contentcapture.IContentCaptureManager;
 import android.view.translation.ITranslationManager;
 import com.android.internal.app.IAppOpsService;
 import com.android.internal.app.IBatteryStats;
+import com.android.internal.app.ISoundTriggerService;
 import com.android.internal.appwidget.IAppWidgetService;
 import com.android.internal.os.IDropBoxManagerService;
 import com.android.internal.statusbar.IStatusBar;
@@ -165,6 +169,7 @@ public class ShadowServiceManager {
     }
     if (RuntimeEnvironment.getApiLevel() >= N) {
       addBinderService(Context.CONTEXTHUB_SERVICE, IContextHubService.class);
+      addBinderService(Context.SOUND_TRIGGER_SERVICE, ISoundTriggerService.class);
     }
     if (RuntimeEnvironment.getApiLevel() >= N_MR1) {
       addBinderService(Context.SHORTCUT_SERVICE, IShortcutService.class);
@@ -173,6 +178,7 @@ public class ShadowServiceManager {
       addBinderService("mount", IStorageManager.class);
       addBinderService(Context.WIFI_AWARE_SERVICE, IWifiAwareManager.class);
       addBinderService(Context.STORAGE_STATS_SERVICE, IStorageStatsManager.class);
+      addBinderService(Context.COMPANION_DEVICE_SERVICE, ICompanionDeviceManager.class);
     } else {
       addBinderService("mount", "android.os.storage.IMountService");
     }
@@ -205,6 +211,8 @@ public class ShadowServiceManager {
       addBinderService(Context.UWB_SERVICE, IUwbAdapter.class);
       addBinderService(Context.VCN_MANAGEMENT_SERVICE, IVcnManagementService.class);
       addBinderService(Context.TRANSLATION_MANAGER_SERVICE, ITranslationManager.class);
+      addBinderService(Context.SENSOR_PRIVACY_SERVICE, ISensorPrivacyManager.class);
+      addBinderService(Context.VPN_MANAGEMENT_SERVICE, IVpnManager.class);
     }
     if (RuntimeEnvironment.getApiLevel() >= TIRAMISU) {
       addBinderService(Context.AMBIENT_CONTEXT_SERVICE, IAmbientContextManager.class);
