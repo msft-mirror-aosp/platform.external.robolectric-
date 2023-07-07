@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.robolectric.gradle.DeployedRoboJavaModulePlugin
 import org.robolectric.gradle.RoboJavaModulePlugin
 
@@ -13,7 +14,7 @@ spotless {
     }
 }
 
-tasks.withType(GenerateModuleMetadata) {
+tasks.withType(GenerateModuleMetadata).configureEach {
     // We don't want to release gradle module metadata now to avoid
     // potential compatibility problems.
     enabled = false
@@ -26,7 +27,7 @@ compileKotlin {
     // in production. If utils module starts to add Kotlin code in main source
     // set, we can remove this destinationDirectory modification.
     destinationDirectory = file("${projectDir}/build/classes/java/main")
-    compilerOptions.jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+    compilerOptions.jvmTarget = JvmTarget.JVM_1_8
 }
 
 afterEvaluate {
@@ -48,20 +49,19 @@ afterEvaluate {
 dependencies {
     api project(":annotations")
     api project(":pluginapi")
-    api "javax.inject:javax.inject:1"
-    api "javax.annotation:javax.annotation-api:1.3.2"
+    api libs.javax.inject
+    api libs.javax.annotation.api
 
     // For @VisibleForTesting and ByteStreams
-    implementation "com.google.guava:guava:$guavaJREVersion"
-    compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+    implementation libs.guava
+    compileOnly libs.findbugs.jsr305
 
-    testCompileOnly "com.google.auto.service:auto-service-annotations:$autoServiceVersion"
-    testAnnotationProcessor "com.google.auto.service:auto-service:$autoServiceVersion"
-    testAnnotationProcessor "com.google.errorprone:error_prone_core:$errorproneVersion"
-    implementation "com.google.errorprone:error_prone_annotations:$errorproneVersion"
+    testCompileOnly libs.auto.service.annotations
+    testAnnotationProcessor libs.auto.service
+    testAnnotationProcessor libs.error.prone.core
+    implementation libs.error.prone.annotations
 
-    testImplementation "junit:junit:${junitVersion}"
-    testImplementation "com.google.truth:truth:${truthVersion}"
-    testImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
-    testImplementation "org.mockito:mockito-core:${mockitoVersion}"
+    testImplementation libs.junit4
+    testImplementation libs.truth
+    testImplementation libs.kotlin.stdlib
 }
