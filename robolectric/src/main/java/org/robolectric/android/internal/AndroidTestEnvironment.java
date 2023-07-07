@@ -86,6 +86,7 @@ import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
 import org.robolectric.shadows.ShadowPackageParser._Package_;
+import org.robolectric.shadows.ShadowView;
 import org.robolectric.util.Logger;
 import org.robolectric.util.PerfStatsCollector;
 import org.robolectric.util.ReflectionHelpers;
@@ -96,6 +97,8 @@ import org.robolectric.util.TempDirectory;
 public class AndroidTestEnvironment implements TestEnvironment {
 
   private static final String CONSCRYPT_PROVIDER = "Conscrypt";
+  private static final int MAX_DATA_DIR_NAME_LENGTH = 120;
+
   private final Sdk runtimeSdk;
   private final Sdk compileSdk;
 
@@ -155,7 +158,6 @@ public class AndroidTestEnvironment implements TestEnvironment {
       loggingInitialized = true;
     }
 
-    Logger.debug("Robolectric Test Configuration: " + configuration.map());
     ConscryptMode.Mode conscryptMode = configuration.get(ConscryptMode.Mode.class);
     Security.removeProvider(CONSCRYPT_PROVIDER);
     if (conscryptMode != ConscryptMode.Mode.OFF) {
@@ -176,7 +178,9 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     Bootstrap.applyQualifiers(config.qualifiers(), apiLevel, androidConfiguration, displayMetrics);
 
-    if (Boolean.getBoolean("robolectric.nativeruntime.enableGraphics")) {
+    androidConfiguration.fontScale = config.fontScale();
+
+    if (ShadowView.useRealGraphics()) {
       Bitmap.setDefaultDensity(displayMetrics.densityDpi);
     }
     Locale locale =
@@ -199,7 +203,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     RuntimeEnvironment.setAndroidFrameworkJarPath(sdkJarPath);
     Bootstrap.setDisplayConfiguration(androidConfiguration, displayMetrics);
-    RuntimeEnvironment.setActivityThread(ReflectionHelpers.newInstance(ActivityThread.class));
+    RuntimeEnvironment.setActivityThread(ReflectionHelpers.callConstructor(ActivityThread.class));
     ReflectionHelpers.setStaticField(
         ActivityThread.class, "sMainThreadHandler", new Handler(Looper.myLooper()));
 
@@ -319,7 +323,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       } catch (ClassNotFoundException e) {
         throw new RuntimeException(e);
       }
-      final Object appBindData = ReflectionHelpers.newInstance(appBindDataClass);
+      final Object appBindData = ReflectionHelpers.callConstructor(appBindDataClass);
       final _AppBindData_ _appBindData_ = reflector(_AppBindData_.class, appBindData);
       _appBindData_.setProcessName(parsedPackage.packageName);
       _appBindData_.setAppInfo(applicationInfo);
@@ -359,7 +363,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
         // Preload fonts resources
         FontsContract.setApplicationContextForResources(application);
       }
-      registerBroadcastReceivers(application, appManifest);
+      registerBroadcastReceivers(application, appManifest, loadedApk);
 
       appResources.updateConfiguration(androidConfiguration, displayMetrics);
       // propagate any updates to configuration via RuntimeEnvironment.setQualifiers
@@ -409,6 +413,11 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
       Path packageFile = appManifest.getApkFile();
       parsedPackage = ShadowPackageParser.callParsePackage(packageFile);
+    }
+    if (parsedPackage != null
+        && parsedPackage.applicationInfo != null
+        && RuntimeEnvironment.getApiLevel() >= P) {
+      parsedPackage.applicationInfo.appComponentFactory = appManifest.getAppComponentFactory();
     }
     return parsedPackage;
   }
@@ -582,9 +591,14 @@ public class AndroidTestEnvironment implements TestEnvironment {
   /** Create a file system safe directory path name for the current test. */
   @SuppressWarnings("DoNotCall")
   private String createTestDataDirRootPath(Method method) {
-    return method.getClass().getSimpleName()
-        + "_"
-        + method.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+    // Cap the size to 120 to avoid unnecessarily long directory names.
+    String directoryName =
+        (method.getDeclaringClass().getSimpleName() + "_" + method.getName())
+            .replaceAll("[^a-zA-Z0-9.-]", "_");
+    if (directoryName.length() > MAX_DATA_DIR_NAME_LENGTH) {
+      directoryName = directoryName.substring(0, MAX_DATA_DIR_NAME_LENGTH);
+    }
+    return directoryName;
   }
 
   @Override
@@ -689,16 +703,39 @@ public class AndroidTestEnvironment implements TestEnvironment {
         .toString();
   }
 
+  private static BroadcastReceiver newBroadcastReceiverFromP(
+      String receiverClassName, LoadedApk loadedApk) {
+    ClassLoader classLoader = Shadow.class.getClassLoader();
+    if (loadedApk == null || loadedApk.getAppFactory() == null) {
+      return (BroadcastReceiver) newInstanceOf(receiverClassName);
+    } else {
+      try {
+        return loadedApk.getAppFactory().instantiateReceiver(classLoader, receiverClassName, null);
+      } catch (ReflectiveOperationException e) {
+        Logger.warn(
+            "Failed to initialize receiver %s with AppComponentFactory %s: %s",
+            receiverClassName, loadedApk.getAppFactory(), e);
+      }
+    }
+    return null;
+  }
+
   // TODO move/replace this with packageManager
   @VisibleForTesting
-  static void registerBroadcastReceivers(Application application, AndroidManifest androidManifest) {
+  static void registerBroadcastReceivers(
+      Application application, AndroidManifest androidManifest, LoadedApk loadedApk) {
     for (BroadcastReceiverData receiver : androidManifest.getBroadcastReceivers()) {
       IntentFilter filter = new IntentFilter();
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      String receiverClassName = replaceLastDotWith$IfInnerStaticClass(receiver.getName());
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      String receiverClassName = receiver.getName();
+      if (loadedApk != null && RuntimeEnvironment.getApiLevel() >= P) {
+        application.registerReceiver(
+            newBroadcastReceiverFromP(receiverClassName, loadedApk), filter);
+      } else {
+        application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      }
     }
   }
 
