@@ -343,6 +343,17 @@ public class CppAssetManager2 {
       for (PackageGroup iter2 : package_groups_) {
         iter2.dynamic_ref_table.addMapping(package_name,
             iter.dynamic_ref_table.mAssignedPackageId);
+
+        // Add the alias resources to the dynamic reference table of every package group. Since
+        // staging aliases can only be defined by the framework package (which is not a shared
+        // library), the compile-time package id of the framework is the same across all packages
+        // that compile against the framework.
+        for (ConfiguredPackage pkg : iter.packages_) {
+          for (Map.Entry<Integer, Integer> entry :
+              pkg.loaded_package_.getAliasResourceIdMap().entrySet()) {
+            iter2.dynamic_ref_table.addAlias(entry.getKey(), entry.getValue());
+          }
+        }
       }
     }
   }
@@ -758,7 +769,7 @@ public class CppAssetManager2 {
     out_entry_.type_flags = type_flags;
     out_entry_.type_string_ref = new StringPoolRef(best_package.GetTypeStringPool(), best_type.id - 1);
     out_entry_.entry_string_ref =
-        new StringPoolRef(best_package.GetKeyStringPool(), best_entry.key.index);
+        new StringPoolRef(best_package.GetKeyStringPool(), best_entry.getKeyIndex());
     out_entry_.dynamic_ref_table = package_group.dynamic_ref_table;
     out_entry.set(out_entry_);
     return best_cookie;

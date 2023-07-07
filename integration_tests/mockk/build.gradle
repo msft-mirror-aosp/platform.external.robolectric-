@@ -7,7 +7,7 @@ apply plugin: "com.diffplug.spotless"
 spotless {
     kotlin {
         target '**/*.kt'
-        ktfmt('0.34').googleStyle()
+        ktfmt('0.42').googleStyle()
     }
 }
 
@@ -21,7 +21,7 @@ dependencies {
 
     testCompileOnly AndroidSdk.MAX_SDK.coordinates
     testRuntimeOnly AndroidSdk.MAX_SDK.coordinates
-    testImplementation "junit:junit:${junitVersion}"
-    testImplementation "com.google.truth:truth:${truthVersion}"
-    testImplementation 'io.mockk:mockk:1.9.3'
+    testImplementation libs.junit4
+    testImplementation libs.truth
+    testImplementation libs.mockk
 }
