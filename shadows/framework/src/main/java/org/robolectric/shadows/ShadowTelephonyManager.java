@@ -52,6 +52,7 @@ import android.telephony.TelephonyDisplayInfo;
 import android.telephony.TelephonyManager;
 import android.telephony.TelephonyManager.CellInfoCallback;
 import android.telephony.VisualVoicemailSmsFilterSettings;
+import android.telephony.emergency.EmergencyNumber;
 import android.text.TextUtils;
 import android.util.SparseArray;
 import android.util.SparseIntArray;
@@ -59,13 +60,16 @@ import com.google.common.base.Ascii;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.HiddenApi;
@@ -141,6 +145,7 @@ public class ShadowTelephonyManager {
   private String visualVoicemailPackageName = null;
   private SignalStrength signalStrength;
   private boolean dataEnabled = false;
+  private final Set<Integer> dataDisabledReasons = new HashSet<>();
   private boolean isRttSupported;
   private final List<String> sentDialerSpecialCodes = new ArrayList<>();
   private boolean hearingAidCompatibilitySupported = false;
@@ -152,6 +157,7 @@ public class ShadowTelephonyManager {
   private VisualVoicemailSmsParams lastVisualVoicemailSmsParams;
   private VisualVoicemailSmsFilterSettings visualVoicemailSmsFilterSettings;
   private boolean emergencyCallbackMode;
+  private static Map<Integer, List<EmergencyNumber>> emergencyNumbersList;
 
   /**
    * Should be {@link TelephonyManager.BootstrapAuthenticationCallback} but this object was
@@ -169,6 +175,7 @@ public class ShadowTelephonyManager {
   @Resetter
   public static void reset() {
     callComposerStatus = 0;
+    emergencyNumbersList = null;
   }
 
   @Implementation(minSdk = S)
@@ -260,6 +267,13 @@ public class ShadowTelephonyManager {
   /** Returns the most recent callback passed to #registerTelephonyCallback(). */
   public /*TelephonyCallback*/ Object getLastTelephonyCallback() {
     return lastTelephonyCallback;
+  }
+
+  /** Call state may be specified via {@link #setCallState(int)}. */
+  @Implementation(minSdk = S)
+  protected int getCallStateForSubscription() {
+    checkReadPhoneStatePermission();
+    return callState;
   }
 
   /** Call state may be specified via {@link #setCallState(int)}. */
@@ -1215,12 +1229,39 @@ public class ShadowTelephonyManager {
   }
 
   /**
+   * Implementation for {@link TelephonyManager#isDataEnabledForReason}.
+   *
+   * @return True by default, unless reason is set to false with {@link
+   *     TelephonyManager#setDataEnabledForReason}.
+   */
+  @Implementation(minSdk = Build.VERSION_CODES.S)
+  protected boolean isDataEnabledForReason(@TelephonyManager.DataEnabledReason int reason) {
+    checkReadPhoneStatePermission();
+    return !dataDisabledReasons.contains(reason);
+  }
+
+  /**
    * Implementation for {@link TelephonyManager#setDataEnabled}. Marked as public in order to allow
    * it to be used as a test API.
    */
   @Implementation(minSdk = Build.VERSION_CODES.O)
   public void setDataEnabled(boolean enabled) {
-    dataEnabled = enabled;
+    setDataEnabledForReason(TelephonyManager.DATA_ENABLED_REASON_USER, enabled);
+  }
+
+  /**
+   * Implementation for {@link TelephonyManager#setDataEnabledForReason}. Marked as public in order
+   * to allow it to be used as a test API.
+   */
+  @Implementation(minSdk = Build.VERSION_CODES.S)
+  public void setDataEnabledForReason(
+      @TelephonyManager.DataEnabledReason int reason, boolean enabled) {
+    if (enabled) {
+      dataDisabledReasons.remove(reason);
+    } else {
+      dataDisabledReasons.add(reason);
+    }
+    dataEnabled = dataDisabledReasons.isEmpty();
   }
 
   /**
@@ -1373,5 +1414,26 @@ public class ShadowTelephonyManager {
     public PendingIntent getSentIntent() {
       return sentIntent;
     }
+  }
+
+  /**
+   * Sets the emergency numbers list returned by {@link TelephonyManager#getEmergencyNumberList}.
+   */
+  public static void setEmergencyNumberList(
+      Map<Integer, List<EmergencyNumber>> emergencyNumbersList) {
+    ShadowTelephonyManager.emergencyNumbersList = emergencyNumbersList;
+  }
+
+  /**
+   * Implementation for {@link TelephonyManager#getEmergencyNumberList}.
+   *
+   * @return an immutable map by default, unless set with {@link #setEmergencyNumberList}.
+   */
+  @Implementation(minSdk = R)
+  protected Map<Integer, List<EmergencyNumber>> getEmergencyNumberList() {
+    if (ShadowTelephonyManager.emergencyNumbersList != null) {
+      return ShadowTelephonyManager.emergencyNumbersList;
+    }
+    return ImmutableMap.of();
   }
 }
