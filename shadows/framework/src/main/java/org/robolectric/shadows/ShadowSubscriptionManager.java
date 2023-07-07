@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
@@ -282,12 +283,33 @@ public class ShadowSubscriptionManager {
   }
 
   /**
+   * Adds a listener to a local list of listeners. Will be triggered by {@link
+   * #setActiveSubscriptionInfoList} when the local list of {@link SubscriptionInfo} is updated.
+   */
+  @Implementation(minSdk = R)
+  protected void addOnSubscriptionsChangedListener(
+      Executor executor, OnSubscriptionsChangedListener listener) {
+    listeners.add(listener);
+    listener.onSubscriptionsChanged();
+  }
+
+  /**
    * Removes a listener from a local list of listeners. Will be triggered by {@link
    * #setActiveSubscriptionInfoList} when the local list of {@link SubscriptionInfo} is updated.
    */
   @Implementation(minSdk = LOLLIPOP_MR1)
   protected void removeOnSubscriptionsChangedListener(OnSubscriptionsChangedListener listener) {
     listeners.remove(listener);
+  }
+
+  /**
+   * Check if a listener exists in the {@link ShadowSubscriptionManager.listeners}.
+   *
+   * @param listener The listener to check.
+   * @return boolean True if the listener already added, otherwise false.
+   */
+  public boolean hasOnSubscriptionsChangedListener(OnSubscriptionsChangedListener listener) {
+    return listeners.contains(listener);
   }
 
   /** Returns subscription Ids that were set via {@link #setActiveSubscriptionInfoList}. */
@@ -403,6 +425,17 @@ public class ShadowSubscriptionManager {
   @Implementation(minSdk = TIRAMISU)
   protected String getPhoneNumber(int subscriptionId) {
     return phoneNumberMap.getOrDefault(subscriptionId, "");
+  }
+
+  /**
+   * Returns the phone number for the given {@code subscriptionId}, or an empty string if not
+   * available. {@code source} is ignored and will return the same as {@link #getPhoneNumber(int)}.
+   *
+   * <p>The phone number can be set by {@link #setPhoneNumber(int, String)}
+   */
+  @Implementation(minSdk = TIRAMISU)
+  protected String getPhoneNumber(int subscriptionId, int source) {
+    return getPhoneNumber(subscriptionId);
   }
 
   /** Sets the phone number returned by {@link #getPhoneNumber(int)}. */
