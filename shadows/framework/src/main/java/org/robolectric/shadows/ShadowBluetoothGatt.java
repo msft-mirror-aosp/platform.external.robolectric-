@@ -35,7 +35,7 @@ import org.robolectric.util.reflector.ForType;
 public class ShadowBluetoothGatt {
 
   private static final String NULL_CALLBACK_MSG = "BluetoothGattCallback can not be null.";
-
+  
   private BluetoothGattCallback bluetoothGattCallback;
   private int connectionPriority = BluetoothGatt.CONNECTION_PRIORITY_BALANCED;
   private boolean isConnected = false;
@@ -143,7 +143,7 @@ public class ShadowBluetoothGatt {
   @Implementation(minSdk = JELLY_BEAN_MR2)
   protected void disconnect() {
     bluetoothGattReflector.disconnect();
-    if (this.getGattCallback() != null && this.isConnected) {
+    if (this.isCallbackAppropriate()) {
       this.getGattCallback()
           .onConnectionStateChange(
               this.realBluetoothGatt,
@@ -381,7 +381,6 @@ public class ShadowBluetoothGatt {
   private boolean isCallbackAppropriate() {
     return this.getGattCallback() != null && this.isConnected;
   }
-
 
   @ForType(BluetoothGatt.class)
   private interface BluetoothGattReflector {

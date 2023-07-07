@@ -23,11 +23,12 @@ public class ResourceModeShadowPicker<T> implements ShadowPicker<T> {
     this.binary14ShadowClass = binary9ShadowClass;
   }
 
-  public ResourceModeShadowPicker(Class<? extends T> legacyShadowClass,
-          Class<? extends T> binaryShadowClass,
-          Class<? extends T> binary9ShadowClass,
-          Class<? extends T> binary10ShadowClass,
-          Class<? extends T> binary14ShadowClass) {
+  public ResourceModeShadowPicker(
+      Class<? extends T> legacyShadowClass,
+      Class<? extends T> binaryShadowClass,
+      Class<? extends T> binary9ShadowClass,
+      Class<? extends T> binary10ShadowClass,
+      Class<? extends T> binary14ShadowClass) {
     this.legacyShadowClass = legacyShadowClass;
     this.binaryShadowClass = binaryShadowClass;
     this.binary9ShadowClass = binary9ShadowClass;
