@@ -5,6 +5,7 @@ apply plugin: AndroidProjectConfigPlugin
 
 android {
     compileSdk 33
+    namespace 'org.robolectric.integrationtests.memoryleaks'
 
     defaultConfig {
         minSdk 16
@@ -28,7 +29,7 @@ dependencies {
     // Testing dependencies
     testImplementation project(path: ':testapp')
     testImplementation project(":robolectric")
-    testImplementation "junit:junit:$junitVersion"
-    testImplementation "com.google.guava:guava-testlib:$guavaJREVersion"
-    testImplementation("androidx.fragment:fragment:1.3.4")
+    testImplementation libs.junit4
+    testImplementation libs.guava.testlib
+    testImplementation libs.androidx.fragment
 }
