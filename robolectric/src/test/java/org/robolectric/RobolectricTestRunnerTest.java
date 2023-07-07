@@ -50,6 +50,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.Config.Implementation;
 import org.robolectric.annotation.experimental.LazyApplication;
 import org.robolectric.annotation.experimental.LazyApplication.LazyLoad;
+import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.internal.AndroidSandbox.TestEnvironmentSpec;
 import org.robolectric.internal.ResourcesMode;
 import org.robolectric.internal.ShadowProvider;
@@ -160,14 +161,15 @@ public class RobolectricTestRunnerTest {
                     new TestEnvironmentSpec(AndroidTestEnvironmentWithFailingSetUp.class))
                 .build());
     runner.run(notifier);
-    assertThat(events).containsExactly(
-        "started: first",
-        "failure: fake error in setUpApplicationState",
-        "finished: first",
-        "started: second",
-        "failure: fake error in setUpApplicationState",
-        "finished: second"
-    ).inOrder();
+    assertThat(events)
+        .containsExactly(
+            "started: first",
+            "failure: fake error in setUpApplicationState",
+            "finished: first",
+            "started: second",
+            "failure: fake error in setUpApplicationState",
+            "finished: second")
+        .inOrder();
   }
 
   @Test
@@ -266,6 +268,24 @@ public class RobolectricTestRunnerTest {
   }
 
   @Test
+  public void failedTest_shouldStillReportPerfStats() throws Exception {
+    List<Metric> metrics = new ArrayList<>();
+    PerfStatsReporter reporter = (metadata, metrics1) -> metrics.addAll(metrics1);
+
+    RobolectricTestRunner runner =
+        new SingleSdkRobolectricTestRunner(
+            TestThatFails.class,
+            RobolectricTestRunner.defaultInjector()
+                .bind(PerfStatsReporter[].class, new PerfStatsReporter[] {reporter})
+                .build());
+
+    runner.run(notifier);
+
+    Set<String> metricNames = metrics.stream().map(Metric::getName).collect(toSet());
+    assertThat(metricNames).contains("initialization");
+  }
+
+  @Test
   public void shouldResetThreadInterrupted() throws Exception {
     RobolectricTestRunner runner = new SingleSdkRobolectricTestRunner(TestWithInterrupt.class);
     runner.run(notifier);
@@ -318,6 +338,9 @@ public class RobolectricTestRunnerTest {
     @Override
     public void setUpApplicationState(Method method,
         Configuration configuration, AndroidManifest appManifest) {
+      // ConfigurationRegistry.instance is required for resetters.
+      Config config = configuration.get(Config.class);
+      ConfigurationRegistry.instance = new ConfigurationRegistry(configuration.map());
       throw new RuntimeException("fake error in setUpApplicationState");
     }
   }
@@ -348,6 +371,15 @@ public class RobolectricTestRunnerTest {
 
     @Test
     public void second() throws Exception {
+    }
+  }
+
+  @Ignore
+  @FixMethodOrder(MethodSorters.NAME_ASCENDING)
+  public static class TestThatFails {
+    @Test
+    public void first() throws Exception {
+      throw new AssertionError();
     }
   }
 

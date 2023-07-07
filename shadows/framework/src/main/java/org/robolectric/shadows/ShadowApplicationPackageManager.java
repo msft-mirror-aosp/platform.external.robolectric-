@@ -5,7 +5,9 @@ import static android.content.pm.ApplicationInfo.FLAG_INSTALLED;
 import static android.content.pm.ApplicationInfo.FLAG_SYSTEM;
 import static android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+import static android.content.pm.PackageManager.DONT_KILL_APP;
 import static android.content.pm.PackageManager.GET_ACTIVITIES;
 import static android.content.pm.PackageManager.GET_META_DATA;
 import static android.content.pm.PackageManager.GET_PROVIDERS;
@@ -67,7 +69,7 @@ import android.content.pm.ModuleInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageItemInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.ApplicationInfoFlags;
+import android.content.pm.PackageManager.ComponentEnabledSetting;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.PackageManager.OnPermissionsChangedListener;
 import android.content.pm.PackageManager.PackageInfoFlags;
@@ -97,6 +99,7 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 import android.util.Pair;
 import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import java.io.File;
@@ -332,6 +335,33 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   @Implementation
   protected void setComponentEnabledSetting(ComponentName componentName, int newState, int flags) {
     componentList.put(componentName, new ComponentState(newState, flags));
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected void setComponentEnabledSettings(List<ComponentEnabledSetting> settings) {
+    for (ComponentEnabledSetting setting : settings) {
+      componentList.put(
+          setting.getComponentName(),
+          new ComponentState(setting.getEnabledState(), setting.getEnabledFlags()));
+    }
+  }
+
+  @Implementation(minSdk = Q)
+  protected void setSyntheticAppDetailsActivityEnabled(String packageName, boolean enabled) {
+    ComponentName componentName =
+        new ComponentName(packageName, PackageManager.APP_DETAILS_ACTIVITY_CLASS_NAME);
+    setComponentEnabledSetting(
+        componentName,
+        enabled ? COMPONENT_ENABLED_STATE_DEFAULT : COMPONENT_ENABLED_STATE_DISABLED,
+        DONT_KILL_APP);
+  }
+
+  @Implementation(minSdk = Q)
+  protected boolean getSyntheticAppDetailsActivityEnabled(String packageName) {
+    ComponentName componentName =
+        new ComponentName(packageName, PackageManager.APP_DETAILS_ACTIVITY_CLASS_NAME);
+    int state = getComponentEnabledSetting(componentName);
+    return state == COMPONENT_ENABLED_STATE_ENABLED || state == COMPONENT_ENABLED_STATE_DEFAULT;
   }
 
   @Implementation
@@ -1005,7 +1035,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @Implementation(minSdk = TIRAMISU)
   protected List<ApplicationInfo> getInstalledApplications(Object flags) {
-    return getInstalledApplications(((ApplicationInfoFlags) flags).getValue());
+    return getInstalledApplications(((PackageManager.ApplicationInfoFlags) flags).getValue());
   }
 
   private List<ApplicationInfo> getInstalledApplications(long flags) {
@@ -1094,7 +1124,10 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   @Implementation(minSdk = JELLY_BEAN_MR1)
   protected void extendVerificationTimeout(
       int id, int verificationCodeAtTimeout, long millisecondsToDelay) {
-    verificationTimeoutExtension.put(id, millisecondsToDelay);
+    synchronized (lock) {
+      verificationTimeoutExtension.put(id, millisecondsToDelay);
+      verificationCodeAtTimeoutExtension.put(id, verificationCodeAtTimeout);
+    }
   }
 
   @Override
@@ -1107,7 +1140,9 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @Implementation
   protected void setInstallerPackageName(String targetPackage, String installerPackageName) {
-    packageInstallerMap.put(targetPackage, installerPackageName);
+    synchronized (lock) {
+      packageInstallerMap.put(targetPackage, installerPackageName);
+    }
   }
 
   @Implementation(minSdk = KITKAT)
@@ -1391,6 +1426,14 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     }
     // Maybe query app infos from overridden resolveInfo as well?
     return packageInfo.applicationInfo;
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected ApplicationInfo getApplicationInfo(Object packageName, Object flagsObject)
+      throws NameNotFoundException {
+    Preconditions.checkArgument(flagsObject instanceof PackageManager.ApplicationInfoFlags);
+    PackageManager.ApplicationInfoFlags flags = (PackageManager.ApplicationInfoFlags) flagsObject;
+    return getApplicationInfo((String) packageName, (int) (flags).getValue());
   }
 
   private void applyFlagsToApplicationInfo(@Nullable ApplicationInfo appInfo, long flags)

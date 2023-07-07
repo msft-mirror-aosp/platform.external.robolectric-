@@ -16,12 +16,14 @@ include ":shadows:framework"
 include ":shadows:httpclient"
 include ":shadows:multidex"
 include ":shadows:playservices"
+include ":shadows:versioning"
 include ":shadowapi"
 include ":errorprone"
 include ":nativeruntime"
 include ":integration_tests:agp"
 include ":integration_tests:agp:testsupport"
 include ":integration_tests:dependency-on-stubs"
+include ":integration_tests:kotlin"
 include ":integration_tests:libphonenumber"
 include ":integration_tests:memoryleaks"
 include ":integration_tests:mockito"
@@ -33,7 +35,10 @@ include ':integration_tests:androidx_test'
 include ':integration_tests:ctesque'
 include ':integration_tests:security-providers'
 include ":integration_tests:mockk"
+include ":integration_tests:jacoco-offline"
 include ':integration_tests:compat-target28'
 include ":integration_tests:multidex"
+include ":integration_tests:play_services"
 include ":integration_tests:sparsearray"
+include ":integration_tests:nativegraphics"
 include ':testapp'
