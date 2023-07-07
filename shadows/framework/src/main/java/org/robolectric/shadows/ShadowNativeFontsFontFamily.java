@@ -57,9 +57,19 @@ public class ShadowNativeFontsFontFamily {
       FontFamilyBuilderNatives.nAddFont(builderPtr, fontPtr);
     }
 
-    @Implementation(maxSdk=TIRAMISU)
+    @Implementation(maxSdk = TIRAMISU)
     protected static long nBuild(
         long builderPtr, String langTags, int variant, boolean isCustomFallback) {
+      return FontFamilyBuilderNatives.nBuild(builderPtr, langTags, variant, isCustomFallback);
+    }
+
+    @Implementation(minSdk = ShadowBuild.UPSIDE_DOWN_CAKE)
+    protected static long nBuild(
+        long builderPtr,
+        String langTags,
+        int variant,
+        boolean isCustomFallback,
+        boolean isDefaultFallback) {
       return FontFamilyBuilderNatives.nBuild(builderPtr, langTags, variant, isCustomFallback);
     }
 

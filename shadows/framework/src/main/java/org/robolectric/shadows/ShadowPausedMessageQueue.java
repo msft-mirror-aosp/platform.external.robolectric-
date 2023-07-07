@@ -16,6 +16,9 @@ import android.os.Message;
 import android.os.MessageQueue;
 import android.os.MessageQueue.IdleHandler;
 import android.os.SystemClock;
+import android.util.Log;
+import androidx.annotation.VisibleForTesting;
+import com.google.common.base.Predicate;
 import java.time.Duration;
 import java.util.ArrayList;
 import org.robolectric.RuntimeEnvironment;
@@ -47,6 +50,7 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
       new NativeObjRegistry<ShadowPausedMessageQueue>(ShadowPausedMessageQueue.class);
   private boolean isPolling = false;
   private ShadowPausedSystemClock.Listener clockListener;
+  private Exception uncaughtException = null;
 
   // shadow constructor instead of nativeInit because nativeInit signature has changed across SDK
   // versions
@@ -55,8 +59,17 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
     invokeConstructor(MessageQueue.class, realQueue, from(boolean.class, quitAllowed));
     int ptr = (int) nativeQueueRegistry.register(this);
     reflector(MessageQueueReflector.class, realQueue).setPtr(ptr);
-    clockListener = () -> nativeWake(ptr);
-    ShadowPausedSystemClock.addListener(clockListener);
+    clockListener =
+        () -> {
+          synchronized (realQueue) {
+            // only wake up the Looper thread if queue is non empty to reduce contention if many
+            // Looper threads are active
+            if (getMessages() != null) {
+              nativeWake(ptr);
+            }
+          }
+        };
+    ShadowPausedSystemClock.addStaticListener(clockListener);
   }
 
   @Implementation(maxSdk = JELLY_BEAN_MR1)
@@ -210,8 +223,28 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
     return reflector(MessageQueueReflector.class, realQueue).getQuitAllowed();
   }
 
+  @VisibleForTesting
   void doEnqueueMessage(Message msg, long when) {
-    reflector(MessageQueueReflector.class, realQueue).enqueueMessage(msg, when);
+    enqueueMessage(msg, when);
+  }
+
+  @Implementation
+  protected boolean enqueueMessage(Message msg, long when) {
+    synchronized (realQueue) {
+      if (uncaughtException != null) {
+        // looper thread has died
+        IllegalStateException e =
+            new IllegalStateException(
+                msg.getTarget()
+                    + " sending message to a Looper thread that has died due to an uncaught"
+                    + " exception",
+                uncaughtException);
+        Log.w("ShadowPausedMessageQueue", e);
+        msg.recycle();
+        throw e;
+      }
+      return reflector(MessageQueueReflector.class, realQueue).enqueueMessage(msg, when);
+    }
   }
 
   Message getMessages() {
@@ -232,6 +265,12 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
     } else {
       reflector(MessageQueueReflector.class, realQueue).quit();
     }
+  }
+
+  @Implementation(minSdk = JELLY_BEAN_MR2)
+  protected void quit(boolean allowed) {
+    reflector(MessageQueueReflector.class, realQueue).quit(allowed);
+    ShadowPausedSystemClock.removeListener(clockListener);
   }
 
   private boolean isQuitting() {
@@ -277,7 +316,9 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
         return Duration.ZERO;
       }
       while (next != null) {
-        when = shadowOfMsg(next).getWhen();
+        if (next.getTarget() != null) {
+          when = shadowOfMsg(next).getWhen();
+        }
         next = shadowOfMsg(next).internalGetNext();
       }
     }
@@ -303,7 +344,9 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
     synchronized (realQueue) {
       Message next = getMessages();
       while (next != null) {
-        count++;
+        if (next.getTarget() != null) {
+          count++;
+        }
         next = shadowOfMsg(next).internalGetNext();
       }
     }
@@ -317,12 +360,24 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
    */
   Message getNextIgnoringWhen() {
     synchronized (realQueue) {
-      Message head = getMessages();
-      if (head != null) {
-        Message next = shadowOfMsg(head).internalGetNext();
-        reflector(MessageQueueReflector.class, realQueue).setMessages(next);
+      Message prev = null;
+      Message msg = getMessages();
+      // Head is blocked on synchronization barrier, find next asynchronous message.
+      if (msg != null && msg.getTarget() == null) {
+        do {
+          prev = msg;
+          msg = shadowOfMsg(msg).internalGetNext();
+        } while (msg != null && !msg.isAsynchronous());
       }
-      return head;
+      if (msg != null) {
+        Message next = shadowOfMsg(msg).internalGetNext();
+        if (prev == null) {
+          reflector(MessageQueueReflector.class, realQueue).setMessages(next);
+        } else {
+          ReflectionHelpers.setField(prev, "next", next);
+        }
+      }
+      return msg;
     }
   }
 
@@ -334,6 +389,7 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
     msgQueue.setMessages(null);
     msgQueue.setIdleHandlers(new ArrayList<>());
     msgQueue.setNextBarrierToken(0);
+    setUncaughtException(null);
   }
 
   private static ShadowPausedMessage shadowOfMsg(Message head) {
@@ -372,10 +428,50 @@ public class ShadowPausedMessageQueue extends ShadowMessageQueue {
     }
   }
 
+  /**
+   * Called when an uncaught exception occurred in this message queue's Looper thread.
+   *
+   * <p>In real android, by default an exception handler is installed which kills the entire process
+   * when an uncaught exception occurs. We don't want to do this in robolectric to isolate tests, so
+   * instead an uncaught exception puts the message queue into an error state, where any future
+   * interaction will rethrow the exception.
+   */
+  void setUncaughtException(Exception e) {
+    synchronized (realQueue) {
+      this.uncaughtException = e;
+    }
+  }
+
+  void checkQueueState() {
+    synchronized (realQueue) {
+      if (uncaughtException != null) {
+        throw new IllegalStateException(
+            "Looper thread that has died due to an uncaught exception", uncaughtException);
+      }
+    }
+  }
+
+  /**
+   * Remove all messages from queue
+   *
+   * @param msgProcessor a callback to apply to each mesg
+   */
+  void drainQueue(Predicate<Runnable> msgProcessor) {
+    synchronized (realQueue) {
+      Message msg = getMessages();
+      while (msg != null) {
+        boolean unused = msgProcessor.apply(msg.getCallback());
+        ShadowMessage shadowMsg = Shadow.extract(msg);
+        msg.recycle();
+        msg = shadowMsg.getNext();
+      }
+    }
+  }
+
   /** Accessor interface for {@link MessageQueue}'s internals. */
   @ForType(MessageQueue.class)
   private interface MessageQueueReflector {
-
+    @Direct
     boolean enqueueMessage(Message msg, long when);
 
     Message next();
