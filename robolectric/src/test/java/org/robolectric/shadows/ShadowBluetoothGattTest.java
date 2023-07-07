@@ -14,6 +14,7 @@ import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.UUID;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -97,6 +98,11 @@ public class ShadowBluetoothGattTest {
   public void setUp() throws Exception {
     BluetoothDevice bluetoothDevice = ShadowBluetoothDevice.newInstance(MOCK_MAC_ADDRESS);
     bluetoothGatt = ShadowBluetoothGatt.newInstance(bluetoothDevice);
+  }
+
+  @After
+  public void tearDown() {
+    shadowOf(bluetoothGatt).getBluetoothConnectionManager().resetConnections();
   }
 
   @Test
