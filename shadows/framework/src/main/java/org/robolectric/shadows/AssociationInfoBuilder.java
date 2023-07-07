@@ -1,6 +1,6 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 
 import android.companion.AssociationInfo;
 import android.net.MacAddress;
@@ -79,20 +79,41 @@ public class AssociationInfoBuilder {
 
   public AssociationInfo build() {
     try {
-      if (RuntimeEnvironment.getApiLevel() < CUR_DEVELOPMENT) {
-        return ReflectionHelpers.callConstructor(
-            AssociationInfo.class,
-            ClassParameter.from(int.class, id),
-            ClassParameter.from(int.class, userId),
-            ClassParameter.from(String.class, packageName),
-            ClassParameter.from(MacAddress.class, MacAddress.fromString(deviceMacAddress)),
-            ClassParameter.from(CharSequence.class, displayName),
-            ClassParameter.from(String.class, deviceProfile),
-            ClassParameter.from(boolean.class, selfManaged),
-            ClassParameter.from(boolean.class, notifyOnDeviceNearby),
-            ClassParameter.from(boolean.class, false /*revoked*/),
-            ClassParameter.from(long.class, approvedMs),
-            ClassParameter.from(long.class, lastTimeConnectedMs));
+      if (RuntimeEnvironment.getApiLevel() <= TIRAMISU) {
+        // We have two different constructors for AssociationInfo across
+        // T branches. aosp has the constructor that takes a new "revoked" parameter.
+        // Since there is not deterministic way to know which branch we are running in,
+        // we will reflect on the class to see if it has the mRevoked member.
+        // Based on the result we will either invoke the constructor with "revoked" or the
+        // one without this parameter.
+        if (ReflectionHelpers.hasField(AssociationInfo.class, "mRevoked")) {
+          return ReflectionHelpers.callConstructor(
+              AssociationInfo.class,
+              ClassParameter.from(int.class, id),
+              ClassParameter.from(int.class, userId),
+              ClassParameter.from(String.class, packageName),
+              ClassParameter.from(MacAddress.class, MacAddress.fromString(deviceMacAddress)),
+              ClassParameter.from(CharSequence.class, displayName),
+              ClassParameter.from(String.class, deviceProfile),
+              ClassParameter.from(boolean.class, selfManaged),
+              ClassParameter.from(boolean.class, notifyOnDeviceNearby),
+              ClassParameter.from(boolean.class, false /*revoked only supported in aosp*/),
+              ClassParameter.from(long.class, approvedMs),
+              ClassParameter.from(long.class, lastTimeConnectedMs));
+        } else {
+          return ReflectionHelpers.callConstructor(
+              AssociationInfo.class,
+              ClassParameter.from(int.class, id),
+              ClassParameter.from(int.class, userId),
+              ClassParameter.from(String.class, packageName),
+              ClassParameter.from(MacAddress.class, MacAddress.fromString(deviceMacAddress)),
+              ClassParameter.from(CharSequence.class, displayName),
+              ClassParameter.from(String.class, deviceProfile),
+              ClassParameter.from(boolean.class, selfManaged),
+              ClassParameter.from(boolean.class, notifyOnDeviceNearby),
+              ClassParameter.from(long.class, approvedMs),
+              ClassParameter.from(long.class, lastTimeConnectedMs));
+        }
       } else {
         return ReflectionHelpers.callConstructor(
             AssociationInfo.class,
