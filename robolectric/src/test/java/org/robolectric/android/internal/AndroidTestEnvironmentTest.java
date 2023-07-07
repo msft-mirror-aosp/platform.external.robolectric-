@@ -2,8 +2,8 @@ package org.robolectric.android.internal;
 
 import static android.os.Build.VERSION_CODES.O;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.TruthJUnit.assume;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeTrue;
 import static org.robolectric.annotation.ConscryptMode.Mode.OFF;
 import static org.robolectric.annotation.ConscryptMode.Mode.ON;
 import static org.robolectric.annotation.LooperMode.Mode.LEGACY;
@@ -241,7 +241,7 @@ public class AndroidTestEnvironmentTest {
   @Test
   public void testResourceNotFound() {
     // not relevant for binary resources mode
-    assumeTrue(bootstrapWrapper.isLegacyResources());
+    assume().that(bootstrapWrapper.isLegacyResources()).isTrue();
 
     try {
       bootstrapWrapper.changeAppManifest(new ThrowingManifest(bootstrapWrapper.getAppManifest()));
@@ -355,5 +355,15 @@ public class AndroidTestEnvironmentTest {
     assertThat(displayMetrics.densityDpi).isEqualTo(DisplayMetrics.DENSITY_HIGH);
     assertThat(RuntimeEnvironment.getQualifiers()).contains("w640dp-h480dp");
     assertThat(RuntimeEnvironment.getQualifiers()).contains("land");
+  }
+
+  @Test
+  public void
+      thisTestNameHasMoreThan255Characters1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890() {
+    bootstrapWrapper.callSetUpApplicationState();
+    ApplicationInfo applicationInfo =
+        ApplicationProvider.getApplicationContext().getApplicationInfo();
+    assertThat(applicationInfo.dataDir).isNotNull();
+    assertThat(new File(applicationInfo.dataDir).isDirectory()).isTrue();
   }
 }

@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.robolectric.gradle.DeployedRoboJavaModulePlugin
 import org.robolectric.gradle.RoboJavaModulePlugin
 
@@ -13,7 +14,7 @@ spotless {
     }
 }
 
-tasks.withType(GenerateModuleMetadata) {
+tasks.withType(GenerateModuleMetadata).configureEach {
     // We don't want to release gradle module metadata now to avoid
     // potential compatibility problems.
     enabled = false
@@ -22,11 +23,11 @@ tasks.withType(GenerateModuleMetadata) {
 compileKotlin {
     // Use java/main classes directory to replace default kotlin/main to
     // avoid d8 error when dexing & desugaring kotlin classes with non-exist
-    // kotlin/main directory because utils module doesn't have kotlin code
+    // kotlin/main directory because this module doesn't have kotlin code
     // in production. If utils module starts to add Kotlin code in main source
     // set, we can remove this destinationDirectory modification.
     destinationDirectory = file("${projectDir}/build/classes/java/main")
-    compilerOptions.jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+    compilerOptions.jvmTarget = JvmTarget.JVM_1_8
 }
 
 afterEvaluate {
@@ -48,10 +49,12 @@ afterEvaluate {
 dependencies {
     api project(":pluginapi")
     api project(":utils")
-    api "com.google.guava:guava:$guavaJREVersion"
+    api libs.auto.value.annotations
+    api libs.guava
+    annotationProcessor libs.auto.value
 
-    testImplementation "junit:junit:$junitVersion"
-    testImplementation "org.mockito:mockito-core:$mockitoVersion"
-    testImplementation "com.google.truth:truth:$truthVersion"
-    testImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
+    testImplementation libs.junit4
+    testImplementation libs.mockito
+    testImplementation libs.truth
+    testImplementation libs.kotlin.stdlib
 }
