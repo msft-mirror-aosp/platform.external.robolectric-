@@ -215,7 +215,6 @@ java_host_for_device {
       "//frameworks/opt/localepicker/tests:__pkg__",
       "//frameworks/opt/wear/signaldetector/robotests:__pkg__",
       "//frameworks/opt/wear/robotests:__pkg__",
-      "//packages/modules/Bluetooth/service:__pkg__",
       "//packages/modules/Connectivity/nearby/tests/multidevices/clients/test_support/snippet_helper/tests:__pkg__",
       "//packages/modules/Connectivity/nearby/tests/robotests:__pkg__",
       "//packages/modules/DeviceLock/DeviceLockController/tests/robolectric:__pkg__",
