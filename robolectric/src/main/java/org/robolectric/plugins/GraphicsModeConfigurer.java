@@ -27,7 +27,7 @@ public class GraphicsModeConfigurer implements Configurer<GraphicsMode.Mode> {
   @Override
   public GraphicsMode.Mode defaultConfig() {
     return GraphicsMode.Mode.valueOf(
-        systemProperties.getProperty("robolectric.graphicsMode", "LEGACY"));
+        systemProperties.getProperty("robolectric.graphicsMode", "NATIVE"));
   }
 
   @Override
