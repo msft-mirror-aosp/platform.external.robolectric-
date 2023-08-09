@@ -140,6 +140,7 @@ public class ShadowCompanionDeviceManager {
         info.id(),
         info.userId(),
         info.packageName(),
+        info.tag(),
         MacAddress.fromString(info.deviceMacAddress()),
         info.displayName(),
         info.deviceProfile(),
@@ -158,6 +159,7 @@ public class ShadowCompanionDeviceManager {
         info.getId(),
         info.getUserId(),
         info.getPackageName(),
+        info.getTag(),
         info.getDeviceMacAddress().toString(),
         info.getDisplayName(),
         info.getDeviceProfile(),
@@ -189,6 +191,9 @@ public class ShadowCompanionDeviceManager {
 
     @Nullable
     public abstract String packageName();
+
+    @Nullable
+    public abstract String tag();
 
     @Nullable
     public abstract String deviceMacAddress();
@@ -228,6 +233,7 @@ public class ShadowCompanionDeviceManager {
         int id,
         int userId,
         String packageName,
+        String tag,
         String deviceMacAddress,
         CharSequence displayName,
         String deviceProfile,
@@ -242,6 +248,7 @@ public class ShadowCompanionDeviceManager {
           .setId(id)
           .setUserId(userId)
           .setPackageName(packageName)
+          .setTag(tag)
           .setDeviceMacAddress(deviceMacAddress)
           .setDisplayName(displayName)
           .setDeviceProfile(deviceProfile)
@@ -263,6 +270,8 @@ public class ShadowCompanionDeviceManager {
       public abstract Builder setUserId(int userId);
 
       public abstract Builder setPackageName(String packageName);
+
+      public abstract Builder setTag(String tag);
 
       public abstract Builder setDeviceMacAddress(String deviceMacAddress);
 
