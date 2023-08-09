@@ -127,6 +127,7 @@ public class ShadowCompanionDeviceManagerTest {
             /* id= */ 1,
             /* userId= */ 1,
             "packageName",
+            "tag",
             MacAddress.fromString(MAC_ADDRESS),
             "displayName",
             "deviceProfile",
