@@ -121,19 +121,7 @@ public class ShadowCompanionDeviceManagerTest {
   @Test
   @Config(minSdk = VERSION_CODES.TIRAMISU)
   public void testAddAssociation_byAssociationInfo() {
-    AssociationInfo info =
-        new AssociationInfo(
-            /* id= */ 1,
-            /* userId= */ 1,
-            "packageName",
-            MacAddress.fromString(MAC_ADDRESS),
-            "displayName",
-            "deviceProfile",
-            /* selfManaged= */ false,
-            /* notifyOnDeviceNearby= */ false,
-            /* revoked */ false,
-            /* timeApprovedMs= */ 0,
-            /* lastTimeConnectedMs= */ 0);
+    AssociationInfo info = createDefaultAssociationInfo();
     assertThat(companionDeviceManager.getAssociations()).isEmpty();
     shadowCompanionDeviceManager.addAssociation(info);
     assertThat(companionDeviceManager.getMyAssociations()).contains(info);
@@ -206,5 +194,40 @@ public class ShadowCompanionDeviceManagerTest {
       @Override
       public void onFailure(CharSequence error) {}
     };
+  }
+
+  /** Create {@link AssociationInfo}. */
+  private AssociationInfo createDefaultAssociationInfo() {
+    AssociationInfoBuilder aiBuilder = AssociationInfoBuilder.newBuilder()
+        .setId(1)
+        .setUserId(1)
+        .setPackageName("packageName")
+        .setDeviceMacAddress(MAC_ADDRESS)
+        .setDisplayName("displayName")
+        .setDeviceProfile("deviceProfile")
+        .setSelfManaged(false)
+        .setNotifyOnDeviceNearby(false)
+        .setApprovedMs(0)
+        .setLastTimeConnectedMs(0);
+
+    if (ReflectionHelpers.hasField(AssociationInfo.class, "mTag")) {
+      ReflectionHelpers.callInstanceMethod(
+          aiBuilder, "setTag", ClassParameter.from(String.class, "tag"));
+    }
+    if (ReflectionHelpers.hasField(AssociationInfo.class, "mAssociatedDevice")) {
+      ReflectionHelpers.callInstanceMethod(
+          aiBuilder,
+          "setAssociatedDevice",
+          ClassParameter.from(Object.class, null));
+      ReflectionHelpers.callInstanceMethod(
+          aiBuilder,
+          "setSystemDataSyncFlags",
+          ClassParameter.from(int.class, -1));
+    }
+    if (ReflectionHelpers.hasField(AssociationInfo.class, "mRevoked")) {
+      ReflectionHelpers.callInstanceMethod(
+          aiBuilder, "setRevoked", ClassParameter.from(boolean.class, false));
+    }
+    return aiBuilder.build();
   }
 }
