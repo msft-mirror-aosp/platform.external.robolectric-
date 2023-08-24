@@ -401,7 +401,11 @@ public class ShadowLauncherAppsTest {
           ClassParameter.from(UserHandle.class, userHandle));
     } else if (RuntimeEnvironment.getApiLevel() <= TIRAMISU) {
       LauncherActivityInfoInternal launcherActivityInfoInternal =
-          new LauncherActivityInfoInternal(info, null, userHandle);
+          ReflectionHelpers.callConstructor(
+              LauncherActivityInfoInternal.class,
+              ClassParameter.from(ActivityInfo.class, info),
+              ClassParameter.from(IncrementalStatesInfo.class, null),
+              ClassParameter.from(UserHandle.class, userHandle));
 
       return ReflectionHelpers.callConstructor(
           LauncherActivityInfo.class,
