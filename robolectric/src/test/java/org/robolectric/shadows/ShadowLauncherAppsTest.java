@@ -404,8 +404,7 @@ public class ShadowLauncherAppsTest {
           ReflectionHelpers.callConstructor(
               LauncherActivityInfoInternal.class,
               ClassParameter.from(ActivityInfo.class, info),
-              ClassParameter.from(IncrementalStatesInfo.class, null),
-              ClassParameter.from(UserHandle.class, userHandle));
+              ClassParameter.from(IncrementalStatesInfo.class, null));
 
       return ReflectionHelpers.callConstructor(
           LauncherActivityInfo.class,
