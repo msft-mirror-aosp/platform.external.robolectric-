@@ -78,12 +78,6 @@ java_test_host {
 
     // Disable annotation processing while compiling tests to avoid executing RobolectricProcessor.
     javacflags: ["-proc:none"],
-
-    // Disabling as javahost test is broken bramble  
-    test_options: {
-        unit_test: false,
-    },
-
 }
 
 // Workaround: java_resource_dirs ignores *.java files
