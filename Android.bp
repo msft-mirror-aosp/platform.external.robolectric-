@@ -16,6 +16,8 @@ package {
     default_visibility: [
         "//external/robolectric:__subpackages__",
         "//test/robolectric-extensions:__subpackages__",
+        "//frameworks/base/packages/SettingsLib/tests/robotests:__subpackages__",
+        "//packages/apps/Settings/tests/robotests:__subpackages__"
     ],
     default_applicable_licenses: ["external_robolectric_license"],
 }
@@ -60,8 +62,9 @@ robolectric_build_props {
     name: "robolectric_build_props_upstream",
 }
 
-java_genrule_host {
+java_genrule {
     name: "robolectric_framework_res_upstream",
+    host_supported: true,
     tools: ["zip2zip"],
     srcs: [":framework-res"],
     out: ["robolectric_framework_res_upstream.jar"],
@@ -118,46 +121,16 @@ java_library_host {
         ":__subpackages__",
         "//prebuilts/misc/common/robolectric",
         "//test/robolectric-extensions:__subpackages__",
+        "//frameworks/base/packages/SettingsLib/tests/robotests:__subpackages__",
     ],
 }
 
-//#############################################
-// Assemble Robolectric_all
-//#############################################
-
-// This is a hack and should be removed with proper resource merging a la maven-shaded-plugin
-//
-// In order to use AndroidXTest APIs in Robolectric (e.g. ActivityScenario), it
-// is necessary to define the service metadata at the top-level. The classes
-// themselves (e.g. LocalUiController) do not use `@AutoService` at the moment.
-// When they are migrated to `@AutoService` the AndroidXTest service metadata
-// can be removed.
-java_genrule_host {
-    name: "robolectric_meta_service_file",
-    out: ["robolectric_meta_service_file.jar"],
-    tools: ["soong_zip"],
-    cmd: "mkdir -p $(genDir)/META-INF/services/ && " +
-        "echo -e 'org.robolectric.Shadows\norg.robolectric.shadows.httpclient.Shadows\norg.robolectric.shadows.multidex.Shadows' > " +
-        "$(genDir)/META-INF/services/org.robolectric.internal.ShadowProvider &&" +
-        "echo org.robolectric.android.internal.LocalUiController > " +
-        "$(genDir)/META-INF/services/androidx.test.platform.ui.UiController &&" +
-        "echo org.robolectric.android.internal.LocalActivityInvoker > " +
-        "$(genDir)/META-INF/services/androidx.test.internal.platform.app.ActivityInvoker &&" +
-        "echo org.robolectric.android.internal.LocalPermissionGranter  > " +
-        "$(genDir)/META-INF/services/androidx.test.internal.platform.content.PermissionGranter &&" +
-        "echo org.robolectric.android.internal.NoOpThreadChecker > " +
-        "$(genDir)/META-INF/services/androidx.test.internal.platform.ThreadChecker &&" +
-        "echo org.robolectric.android.internal.LocalControlledLooper > " +
-        "$(genDir)/META-INF/services/androidx.test.internal.platform.os.ControlledLooper &&" +
-        "$(location soong_zip) -o $(out) -C $(genDir) -D $(genDir)/META-INF/services/",
-}
 
 java_library_host {
     name: "Robolectric_all_upstream",
 
     static_libs: [
         "Robolectric-aosp-plugins",
-        "robolectric_meta_service_file",
         "Robolectric_shadows_httpclient_upstream",
         "Robolectric_shadows_framework_upstream",
         "Robolectric_shadows_multidex_upstream",
@@ -209,12 +182,13 @@ java_host_for_device {
       "//external/mobile-data-download/javatests:__pkg__",
       "//frameworks/base/services/robotests:__pkg__",
       "//frameworks/base/services/robotests/backup:__pkg__",
-      "//frameworks/base/packages/SettingsLib/tests/robotests:__pkg__",
+      "//frameworks/base/packages/SettingsLib/tests/robotests:__subpackages__",
       "//frameworks/base/packages/SystemUI:__pkg__",
       "//frameworks/opt/car/setupwizard/library/main/tests/robotests:__pkg__",
       "//frameworks/opt/localepicker/tests:__pkg__",
       "//frameworks/opt/wear/signaldetector/robotests:__pkg__",
       "//frameworks/opt/wear/robotests:__pkg__",
+      "//packages/modules/Bluetooth/service:__pkg__",
       "//packages/modules/Connectivity/nearby/tests/multidevices/clients/test_support/snippet_helper/tests:__pkg__",
       "//packages/modules/Connectivity/nearby/tests/robotests:__pkg__",
       "//packages/modules/DeviceLock/DeviceLockController/tests/robolectric:__pkg__",
