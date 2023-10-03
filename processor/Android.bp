@@ -69,7 +69,7 @@ java_test_host {
         "guava",
         "objenesis",
         "junit",
-        "truth-prebuilt",
+        "truth",
         "gson",
         "jsr305",
     ],
