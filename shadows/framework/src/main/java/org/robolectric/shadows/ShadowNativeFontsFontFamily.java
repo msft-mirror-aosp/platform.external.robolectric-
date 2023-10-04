@@ -11,6 +11,8 @@ import org.robolectric.nativeruntime.DefaultNativeRuntimeLoader;
 import org.robolectric.nativeruntime.FontFamilyBuilderNatives;
 import org.robolectric.nativeruntime.FontsFontFamilyNatives;
 import org.robolectric.shadows.ShadowNativeFontsFontFamily.Picker;
+import org.robolectric.versioning.AndroidVersions.U;
+import org.robolectric.versioning.AndroidVersions.V;
 
 /** Shadow for {@link FontFamily} that is backed by native code */
 @Implements(
@@ -60,6 +62,27 @@ public class ShadowNativeFontsFontFamily {
     @Implementation(maxSdk = TIRAMISU)
     protected static long nBuild(
         long builderPtr, String langTags, int variant, boolean isCustomFallback) {
+      return FontFamilyBuilderNatives.nBuild(builderPtr, langTags, variant, isCustomFallback);
+    }
+
+    @Implementation(minSdk = U.SDK_INT, maxSdk = U.SDK_INT)
+    protected static long nBuild(
+        long builderPtr,
+        String langTags,
+        int variant,
+        boolean isCustomFallback,
+        boolean isDefaultFallback) {
+      return FontFamilyBuilderNatives.nBuild(builderPtr, langTags, variant, isCustomFallback);
+    }
+
+    @Implementation(minSdk = V.SDK_INT)
+    protected static long nBuild(
+        long builderPtr,
+        String langTags,
+        int variant,
+        boolean isCustomFallback,
+        boolean isDefaultFallback,
+        int variableFamilyType) {
       return FontFamilyBuilderNatives.nBuild(builderPtr, langTags, variant, isCustomFallback);
     }
 
