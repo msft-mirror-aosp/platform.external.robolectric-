@@ -29,6 +29,8 @@ import org.robolectric.annotation.TextLayoutMode;
 import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
+import org.robolectric.versioning.AndroidVersions.U;
+import org.robolectric.versioning.AndroidVersions.V;
 
 @SuppressWarnings({"UnusedDeclaration"})
 @Implements(value = Paint.class, looseSignatures = true)
@@ -342,6 +344,17 @@ public class ShadowPaint {
   }
 
   @Implementation
+  protected final boolean isFilterBitmap() {
+    return (flags & Paint.FILTER_BITMAP_FLAG) == Paint.FILTER_BITMAP_FLAG;
+  }
+
+  @Implementation
+  protected final void setFilterBitmap(boolean filterBitmap) {
+    this.flags =
+        (flags & ~Paint.FILTER_BITMAP_FLAG) | (filterBitmap ? Paint.FILTER_BITMAP_FLAG : 0);
+  }
+
+  @Implementation
   protected PathEffect getPathEffect() {
     return pathEffect;
   }
@@ -487,7 +500,13 @@ public class ShadowPaint {
     return text.length();
   }
 
-  @Implementation(minSdk = P)
+  @Implementation(minSdk = V.SDK_INT)
+  protected static int nGetFontMetricsInt(
+      long paintPtr, FontMetricsInt fmi, /* Ignored */ boolean useLocale) {
+    return nGetFontMetricsInt(paintPtr, fmi);
+  }
+
+  @Implementation(minSdk = P, maxSdk = U.SDK_INT)
   protected static int nGetFontMetricsInt(long paintPtr, FontMetricsInt fmi) {
     if (ConfigurationRegistry.get(TextLayoutMode.Mode.class) == REALISTIC) {
       // TODO: hack, just set values to those we see on emulator
