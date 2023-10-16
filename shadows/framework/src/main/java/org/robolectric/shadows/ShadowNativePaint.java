@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.Paint.FontMetrics;
 import android.graphics.Paint.FontMetricsInt;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import androidx.annotation.ColorInt;
 import androidx.annotation.ColorLong;
 import org.robolectric.annotation.Implementation;
@@ -17,6 +18,8 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.nativeruntime.DefaultNativeRuntimeLoader;
 import org.robolectric.nativeruntime.PaintNatives;
 import org.robolectric.shadows.ShadowNativePaint.Picker;
+import org.robolectric.versioning.AndroidVersions.U;
+import org.robolectric.versioning.AndroidVersions.V;
 
 /** Shadow for {@link Paint} that is backed by native code */
 @Implements(
@@ -426,7 +429,13 @@ public class ShadowNativePaint {
     PaintNatives.nSetFontFeatureSettings(paintPtr, settings);
   }
 
-  @Implementation(minSdk = P)
+  @Implementation(minSdk = V.SDK_INT)
+  protected static float nGetFontMetrics(
+      long paintPtr, FontMetrics metrics, /* Ignored */ boolean useLocale) {
+    return PaintNatives.nGetFontMetrics(paintPtr, metrics);
+  }
+
+  @Implementation(minSdk = P, maxSdk = U.SDK_INT)
   protected static float nGetFontMetrics(long paintPtr, FontMetrics metrics) {
     return PaintNatives.nGetFontMetrics(paintPtr, metrics);
   }
@@ -436,7 +445,13 @@ public class ShadowNativePaint {
     return PaintNatives.nGetFontMetrics(paintPtr, typefacePtr, metrics);
   }
 
-  @Implementation(minSdk = P)
+  @Implementation(minSdk = V.SDK_INT)
+  protected static int nGetFontMetricsInt(
+      long paintPtr, FontMetricsInt fmi, /* Ignored */ boolean useLocale) {
+    return PaintNatives.nGetFontMetricsInt(paintPtr, fmi);
+  }
+
+  @Implementation(minSdk = P, maxSdk = U.SDK_INT)
   protected static int nGetFontMetricsInt(long paintPtr, FontMetricsInt fmi) {
     return PaintNatives.nGetFontMetricsInt(paintPtr, fmi);
   }
@@ -813,7 +828,7 @@ public class ShadowNativePaint {
         paintPtr, text, start, count, ctxStart, ctxCount, isRtl, outMetrics);
   }
 
-  @Implementation(minSdk = ShadowBuild.UPSIDE_DOWN_CAKE)
+  @Implementation(minSdk = U.SDK_INT, maxSdk = U.SDK_INT)
   protected static float nGetRunCharacterAdvance(
       long paintPtr,
       char[] text,
@@ -826,6 +841,32 @@ public class ShadowNativePaint {
       float[] advances,
       int advancesIndex) {
     return PaintNatives.nGetRunCharacterAdvance(
+        paintPtr,
+        text,
+        start,
+        end,
+        contextStart,
+        contextEnd,
+        isRtl,
+        offset,
+        advances,
+        advancesIndex);
+  }
+
+  @Implementation(minSdk = V.SDK_INT)
+  protected static float nGetRunCharacterAdvance(
+      long paintPtr,
+      char[] text,
+      int start,
+      int end,
+      int contextStart,
+      int contextEnd,
+      boolean isRtl,
+      int offset,
+      float[] advances,
+      int advancesIndex,
+      RectF drawingBounds) {
+    return nGetRunCharacterAdvance(
         paintPtr,
         text,
         start,
