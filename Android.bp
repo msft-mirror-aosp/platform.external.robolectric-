@@ -216,6 +216,7 @@ java_host_for_device {
       //tm-dev additions
       "//frameworks/base/packages/BackupEncryption/test/robolectric-integration:__pkg__",
       "//frameworks/base/packages/BackupEncryption/test/robolectric:__pkg__",
+      "//packages/apps/Settings/tests/screenshot:__pkg__",
     ],
 }
 
