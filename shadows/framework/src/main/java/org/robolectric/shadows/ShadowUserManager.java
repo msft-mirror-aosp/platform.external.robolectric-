@@ -600,6 +600,16 @@ public class ShadowUserManager {
   }
 
   @HiddenApi
+  @Implementation(minSdk = R)
+  protected List<UserHandle> getUserHandles(boolean excludeDying) {
+    ArrayList<UserHandle> userHandles = new ArrayList<>();
+    for (int id : userManagerState.userSerialNumbers.keySet()) {
+      userHandles.addAll(userManagerState.userProfilesListMap.get(id));
+    }
+    return userHandles;
+  }
+
+  @HiddenApi
   @Implementation(minSdk = JELLY_BEAN_MR1)
   protected static int getMaxSupportedUsers() {
     return maxSupportedUsers;
@@ -998,6 +1008,9 @@ public class ShadowUserManager {
 
   @Implementation(minSdk = JELLY_BEAN_MR1)
   protected boolean removeUser(int userHandle) {
+    if (!userManagerState.userInfoMap.containsKey(userHandle)) {
+      return false;
+    }
     userManagerState.userInfoMap.remove(userHandle);
     userManagerState.userPidMap.remove(userHandle);
     userManagerState.userSerialNumbers.remove(userHandle);
@@ -1019,6 +1032,13 @@ public class ShadowUserManager {
   @Implementation(minSdk = Q)
   protected boolean removeUser(UserHandle user) {
     return removeUser(user.getIdentifier());
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected int removeUserWhenPossible(UserHandle user, boolean overrideDevicePolicy) {
+    return removeUser(user.getIdentifier())
+        ? UserManager.REMOVE_RESULT_REMOVED
+        : UserManager.REMOVE_RESULT_ERROR_UNKNOWN;
   }
 
   @Implementation(minSdk = N)
