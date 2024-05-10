@@ -1,9 +1,6 @@
 package org.robolectric.shadows;
 
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.P;
@@ -11,6 +8,7 @@ import static android.os.Build.VERSION_CODES.R;
 import static java.util.stream.Collectors.toCollection;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
+import android.annotation.RequiresApi;
 import android.annotation.RequiresPermission;
 import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
@@ -26,7 +24,6 @@ import android.os.Process;
 import android.os.UserHandle;
 import android.util.ArrayMap;
 import android.util.SparseIntArray;
-import androidx.annotation.RequiresApi;
 import com.google.common.base.Preconditions;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -91,7 +88,7 @@ public class ShadowActivityManager {
     return false;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   @HiddenApi
   @RequiresPermission(
       anyOf = {
@@ -114,7 +111,7 @@ public class ShadowActivityManager {
    * @see #setAppTasks(List)
    * @return List of current AppTask.
    */
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected List<ActivityManager.AppTask> getAppTasks() {
     return appTasks;
   }
@@ -156,7 +153,7 @@ public class ShadowActivityManager {
   }
 
   @HiddenApi
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected boolean switchUser(int userid) {
     ShadowUserManager shadowUserManager =
         Shadow.extract(context.getSystemService(Context.USER_SERVICE));
@@ -207,7 +204,7 @@ public class ShadowActivityManager {
    * Sets the values to be returned by {@link #getAppTasks()}.
    *
    * @see #getAppTasks()
-   * @param tasks List of app tasks.
+   * @param appTasks List of app tasks.
    */
   public void setAppTasks(List<ActivityManager.AppTask> appTasks) {
     this.appTasks.clear();
@@ -246,7 +243,7 @@ public class ShadowActivityManager {
     return ReflectionHelpers.createNullProxy(IActivityManager.class);
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected boolean isLowRamDevice() {
     if (isLowRamDeviceOverride != null) {
       return isLowRamDeviceOverride;
@@ -296,7 +293,7 @@ public class ShadowActivityManager {
     return lockTaskModeState;
   }
 
-  @Implementation(minSdk = VERSION_CODES.LOLLIPOP)
+  @Implementation
   protected boolean isInLockTaskMode() {
     return getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE;
   }

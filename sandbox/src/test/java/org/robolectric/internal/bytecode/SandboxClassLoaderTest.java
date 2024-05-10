@@ -103,7 +103,7 @@ public class SandboxClassLoaderTest {
   public void shouldDelegateToHandlerForConstructors() throws Exception {
     Class<?> clazz = loadClass(AClassWithNoDefaultConstructor.class);
     Constructor<?> ctor = clazz.getDeclaredConstructor(String.class);
-    assertTrue(Modifier.isPublic(ctor.getModifiers()));
+    assertThat(Modifier.isPublic(ctor.getModifiers())).isFalse();
     ctor.setAccessible(true);
     Object instance = ctor.newInstance("new one");
     assertThat(transcript)
@@ -147,6 +147,7 @@ public class SandboxClassLoaderTest {
     Field roboDataField = exampleClass.getField(ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME);
     assertNotNull(roboDataField);
     assertThat(Modifier.isPublic(roboDataField.getModifiers())).isTrue();
+    assertThat(Modifier.isTransient(roboDataField.getModifiers())).isTrue();
 
     // Java 9 doesn't allow updates to final fields from outside <init> or <clinit>:
     // https://bugs.openjdk.java.net/browse/JDK-8157181
@@ -625,7 +626,7 @@ public class SandboxClassLoaderTest {
 
     @Override
     public MethodHandle findShadowMethodHandle(
-        Class<?> theClass, String name, MethodType type, boolean isStatic)
+        Class<?> theClass, String name, MethodType type, boolean isStatic, boolean isNative)
         throws IllegalAccessException {
       String signature = getSignature(theClass, name, type, isStatic);
       InvocationProfile invocationProfile =

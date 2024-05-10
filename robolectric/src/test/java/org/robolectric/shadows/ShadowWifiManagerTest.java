@@ -1,12 +1,15 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
+import static android.net.wifi.WifiManager.SCAN_RESULTS_AVAILABLE_ACTION;
 import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.eq;
@@ -15,31 +18,46 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.robolectric.Shadows.shadowOf;
 
+import android.app.Application;
 import android.app.admin.DeviceAdminService;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
+import android.net.MacAddress;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.AddNetworkResult;
+import android.net.wifi.WifiManager.LocalOnlyConnectionFailureListener;
 import android.net.wifi.WifiManager.MulticastLock;
+import android.net.wifi.WifiManager.PnoScanResultsCallback;
+import android.net.wifi.WifiNetworkSpecifier;
+import android.net.wifi.WifiSsid;
 import android.net.wifi.WifiUsabilityStatsEntry;
 import android.os.Build;
 import android.util.Pair;
-import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadow.api.Shadow;
+import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.versioning.AndroidVersions.U;
 
 @RunWith(AndroidJUnit4.class)
 public class ShadowWifiManagerTest {
@@ -47,9 +65,7 @@ public class ShadowWifiManagerTest {
 
   @Before
   public void setUp() throws Exception {
-    wifiManager =
-        (WifiManager)
-            ApplicationProvider.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+    wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
   }
 
   @Test
@@ -59,9 +75,17 @@ public class ShadowWifiManagerTest {
 
   @Test
   public void setWifiInfo_shouldUpdateWifiInfo() {
-    WifiInfo wifiInfo = new WifiInfo();
+    WifiInfo wifiInfo = newWifiInfo();
     shadowOf(wifiManager).setConnectionInfo(wifiInfo);
     assertThat(wifiManager.getConnectionInfo()).isSameInstanceAs(wifiInfo);
+  }
+
+  private static WifiInfo newWifiInfo() {
+    if (RuntimeEnvironment.getApiLevel() >= LOLLIPOP) {
+      return new WifiInfo();
+    } else {
+      return ReflectionHelpers.callConstructor(WifiInfo.class);
+    }
   }
 
   @Test
@@ -131,7 +155,6 @@ public class ShadowWifiManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR2)
   public void getIsScanAlwaysAvailable() {
     shadowOf(wifiManager).setIsScanAlwaysAvailable(true);
     assertThat(wifiManager.isScanAlwaysAvailable()).isEqualTo(true);
@@ -230,11 +253,11 @@ public class ShadowWifiManagerTest {
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(networkId);
 
     // If we don't have permission to update, updateNetwork will return -1.
-    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission = */ false);
+    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission= */ false);
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(-1);
 
     // Ensure updates can occur if permission is restored.
-    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission = */ true);
+    shadowOf(wifiManager).setUpdateNetworkPermission(networkId, /* hasPermission= */ true);
     assertThat(wifiManager.updateNetwork(wifiConfiguration)).isEqualTo(networkId);
   }
 
@@ -251,6 +274,24 @@ public class ShadowWifiManagerTest {
 
     list = wifiManager.getConfiguredNetworks();
     assertThat(list.size()).isEqualTo(0);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void addNetworkPrivileged_nullConfig_shouldThrowIllegalArgumentException() {
+    assertThrows(IllegalArgumentException.class, () -> wifiManager.addNetworkPrivileged(null));
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void addNetworkPrivileged_nonNullConfig_shouldAddNetworkSuccessfully() {
+    WifiConfiguration wifiConfiguration = new WifiConfiguration();
+
+    AddNetworkResult addNetworkResult = wifiManager.addNetworkPrivileged(wifiConfiguration);
+
+    assertThat(addNetworkResult).isNotNull();
+    assertThat(addNetworkResult.statusCode).isEqualTo(AddNetworkResult.STATUS_SUCCESS);
+    assertThat(wifiManager.getConfiguredNetworks()).hasSize(1);
   }
 
   @Test
@@ -557,15 +598,13 @@ public class ShadowWifiManagerTest {
     // THEN
     NetworkInfo networkInfo =
         ((ConnectivityManager)
-                ApplicationProvider.getApplicationContext()
-                    .getSystemService(Context.CONNECTIVITY_SERVICE))
+                getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE))
             .getActiveNetworkInfo();
     assertThat(networkInfo.getType()).isEqualTo(ConnectivityManager.TYPE_WIFI);
     assertThat(networkInfo.isConnected()).isTrue();
   }
 
   @Test
-  @Config(minSdk = Build.VERSION_CODES.KITKAT)
   public void connect_setsNetworkId_shouldHasNetworkId() {
     // WHEN
     wifiManager.connect(123, null);
@@ -575,7 +614,6 @@ public class ShadowWifiManagerTest {
   }
 
   @Test
-  @Config(minSdk = Build.VERSION_CODES.KITKAT)
   public void connect_setsConnectionInfo() {
     // GIVEN
     WifiConfiguration wifiConfiguration = new WifiConfiguration();
@@ -589,7 +627,6 @@ public class ShadowWifiManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void is5GhzBandSupportedAndConfigurable() {
     assertThat(wifiManager.is5GHzBandSupported()).isFalse();
     shadowOf(wifiManager).setIs5GHzBandSupported(true);
@@ -602,6 +639,38 @@ public class ShadowWifiManagerTest {
     assertThat(wifiManager.isStaApConcurrencySupported()).isFalse();
     shadowOf(wifiManager).setStaApConcurrencySupported(true);
     assertThat(wifiManager.isStaApConcurrencySupported()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void isWpa3SaeSupportedAndConfigurable() {
+    assertThat(wifiManager.isWpa3SaeSupported()).isFalse();
+    shadowOf(wifiManager).setWpa3SaeSupported(true);
+    assertThat(wifiManager.isWpa3SaeSupported()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void isWpa3SaePublicKeySupportedAndConfigurable() {
+    assertThat(wifiManager.isWpa3SaePublicKeySupported()).isFalse();
+    shadowOf(wifiManager).setWpa3SaePublicKeySupported(true);
+    assertThat(wifiManager.isWpa3SaePublicKeySupported()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void isWpa3SaeH2eSupportedAndConfigurable() {
+    assertThat(wifiManager.isWpa3SaeH2eSupported()).isFalse();
+    shadowOf(wifiManager).setWpa3SaeH2eSupported(true);
+    assertThat(wifiManager.isWpa3SaeH2eSupported()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void isWpa3SuiteBSupportedAndConfigurable() {
+    assertThat(wifiManager.isWpa3SuiteBSupported()).isFalse();
+    shadowOf(wifiManager).setWpa3SuiteBSupported(true);
+    assertThat(wifiManager.isWpa3SuiteBSupported()).isTrue();
   }
 
   @Test
@@ -832,13 +901,479 @@ public class ShadowWifiManagerTest {
     assertThat(shadowOf(wifiManager).getWifiApConfiguration().SSID).isEqualTo("foo");
   }
 
+  @Test
+  @Config(minSdk = R)
+  public void shouldRecordTheLastSoftApConfiguration() {
+    SoftApConfiguration softApConfig =
+        new SoftApConfiguration.Builder()
+            .setSsid("foo")
+            .setPassphrase(null, SoftApConfiguration.SECURITY_TYPE_OPEN)
+            .build();
+
+    boolean status = wifiManager.setSoftApConfiguration(softApConfig);
+    assertThat(status).isTrue();
+
+    assertThat(shadowOf(wifiManager).getSoftApConfiguration().getSsid()).isEqualTo("foo");
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_nullCallback_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            wifiManager.setExternalPnoScanRequest(
+                List.of(WifiSsid.fromBytes(new byte[] {3, 2, 5})),
+                /* frequencies= */ null,
+                Executors.newSingleThreadExecutor(),
+                /* callback= */ null));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_nullExecutor_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            wifiManager.setExternalPnoScanRequest(
+                List.of(WifiSsid.fromBytes(new byte[] {3, 2, 5})),
+                /* frequencies= */ null,
+                /* executor= */ null,
+                new TestPnoScanResultsCallback()));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_nullSsidList_throwsIllegalStateException() {
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            wifiManager.setExternalPnoScanRequest(
+                /* ssids= */ null,
+                /* frequencies= */ null,
+                Executors.newSingleThreadExecutor(),
+                new TestPnoScanResultsCallback()));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_emptySsidList_throwsIllegalStateException() {
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            wifiManager.setExternalPnoScanRequest(
+                /* ssids= */ List.of(),
+                /* frequencies= */ null,
+                Executors.newSingleThreadExecutor(),
+                new TestPnoScanResultsCallback()));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_moreThan2Ssids_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            wifiManager.setExternalPnoScanRequest(
+                List.of(
+                    WifiSsid.fromBytes(new byte[] {1, 2, 3}),
+                    WifiSsid.fromBytes(new byte[] {9, 8, 7, 6}),
+                    WifiSsid.fromBytes(new byte[] {90, 81, 72, 63, 54})),
+                /* frequencies= */ null,
+                Executors.newSingleThreadExecutor(),
+                new TestPnoScanResultsCallback()));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_moreThan10Frequencies_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            wifiManager.setExternalPnoScanRequest(
+                List.of(
+                    WifiSsid.fromBytes(new byte[] {1, 2, 3}),
+                    WifiSsid.fromBytes(new byte[] {9, 8, 7, 6})),
+                new int[] {5160, 5180, 5200, 5220, 5240, 5260, 5280, 5300, 5320, 5340, 5360},
+                Executors.newSingleThreadExecutor(),
+                new TestPnoScanResultsCallback()));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_validRequest_successCallbackInvoked() throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {1, 2, 3})),
+        /* frequencies= */ null,
+        Executors.newSingleThreadExecutor(),
+        callback);
+
+    assertThat(callback.successfulRegistrations.take()).isNotNull();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void
+      setExternalPnoScanRequest_outstandingRequest_failureCallbackInvokedWithAlreadyRegisteredStatus()
+          throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {1, 2, 3})),
+        /* frequencies= */ null,
+        Executors.newSingleThreadExecutor(),
+        callback);
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {9, 2, 5})),
+        new int[] {5280},
+        Executors.newSingleThreadExecutor(),
+        callback);
+
+    assertThat(callback.failedRegistrations.take())
+        .isEqualTo(PnoScanResultsCallback.REGISTER_PNO_CALLBACK_ALREADY_REGISTERED);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setExternalPnoScanRequest_differentUid_failureCallbackInvokedWithBusyStatus()
+      throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {1, 2, 3})),
+        /* frequencies= */ null,
+        Executors.newSingleThreadExecutor(),
+        callback);
+
+    int firstAppUid = ShadowProcess.myUid();
+    int secondAppUid;
+    do {
+      secondAppUid = ShadowProcess.getRandomApplicationUid();
+    } while (firstAppUid == secondAppUid);
+    ShadowProcess.setUid(secondAppUid);
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {1, 2, 3})),
+        /* frequencies= */ null,
+        Executors.newSingleThreadExecutor(),
+        callback);
+
+    assertThat(callback.failedRegistrations.take())
+        .isEqualTo(PnoScanResultsCallback.REGISTER_PNO_CALLBACK_RESOURCE_BUSY);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void clearExternalPnoScanRequest_outstandingRequest_callbackInvokedWithUnregisteredStatus()
+      throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {1, 2, 3})),
+        /* frequencies= */ null,
+        Executors.newSingleThreadExecutor(),
+        callback);
+    wifiManager.clearExternalPnoScanRequest();
+
+    assertThat(callback.removedRegistrations.take())
+        .isEqualTo(PnoScanResultsCallback.REMOVE_PNO_CALLBACK_UNREGISTERED);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void clearExternalPnoScanRequest_wrongUid_callbackNotInvoked() throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(WifiSsid.fromBytes(new byte[] {1, 2, 3})),
+        /* frequencies= */ null,
+        executor,
+        callback);
+
+    int firstAppUid = ShadowProcess.myUid();
+    int secondAppUid;
+    do {
+      secondAppUid = ShadowProcess.getRandomApplicationUid();
+    } while (firstAppUid == secondAppUid);
+    ShadowProcess.setUid(secondAppUid);
+
+    wifiManager.clearExternalPnoScanRequest();
+
+    executor.shutdown();
+
+    assertThat(executor.awaitTermination(5, MINUTES)).isTrue();
+    assertThat(callback.removedRegistrations).isEmpty();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void networksFoundFromPnoScan_matchingSsid_availableCallbackInvoked() throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+    WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[] {1, 2, 3});
+    ScanResult scanResult = new ScanResult();
+    scanResult.setWifiSsid(wifiSsid);
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(wifiSsid), /* frequencies= */ null, Executors.newSingleThreadExecutor(), callback);
+    shadowOf(wifiManager).networksFoundFromPnoScan(List.of(scanResult));
+
+    assertThat(callback.incomingScanResults.take()).containsExactly(scanResult);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void networksFoundFromPnoScan_matchingSsid_removedCallbackInvokedWithDeliveredStatus()
+      throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+    WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[] {1, 2, 3});
+    ScanResult scanResult = new ScanResult();
+    scanResult.setWifiSsid(wifiSsid);
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(wifiSsid), /* frequencies= */ null, Executors.newSingleThreadExecutor(), callback);
+    shadowOf(wifiManager).networksFoundFromPnoScan(List.of(scanResult));
+
+    assertThat(callback.removedRegistrations.take())
+        .isEqualTo(PnoScanResultsCallback.REMOVE_PNO_CALLBACK_RESULTS_DELIVERED);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void networksFoundFromPnoScan_matchingSsid_scanResultsAvailableBroadcastSent() {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+    WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[] {1, 2, 3});
+    ScanResult scanResult = new ScanResult();
+    scanResult.setWifiSsid(wifiSsid);
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(wifiSsid), /* frequencies= */ null, Executors.newSingleThreadExecutor(), callback);
+    shadowOf(wifiManager).networksFoundFromPnoScan(List.of(scanResult));
+
+    Intent expectedIntent = new Intent(SCAN_RESULTS_AVAILABLE_ACTION);
+    expectedIntent.putExtra(WifiManager.EXTRA_RESULTS_UPDATED, true);
+    expectedIntent.setPackage(getApplicationContext().getPackageName());
+
+    assertThat(
+            shadowOf((Application) getApplicationContext()).getBroadcastIntents().stream()
+                .anyMatch(expectedIntent::filterEquals))
+        .isTrue();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void networksFoundFromPnoScan_noMatchingSsid_availableCallbackNotInvoked()
+      throws Exception {
+    TestPnoScanResultsCallback callback = new TestPnoScanResultsCallback();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[] {1, 2, 3});
+    WifiSsid otherWifiSsid = WifiSsid.fromBytes(new byte[] {9, 8, 7, 6});
+    ScanResult scanResult = new ScanResult();
+    scanResult.setWifiSsid(otherWifiSsid);
+
+    wifiManager.setExternalPnoScanRequest(
+        List.of(wifiSsid), /* frequencies= */ null, executor, callback);
+    shadowOf(wifiManager).networksFoundFromPnoScan(List.of(scanResult));
+
+    executor.shutdown();
+
+    assertThat(executor.awaitTermination(5, MINUTES)).isTrue();
+    assertThat(callback.incomingScanResults).isEmpty();
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void addLocalOnlyConnectionFailureListener_nullExecutor_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            wifiManager.addLocalOnlyConnectionFailureListener(
+                /* executor= */ null, /* listener= */ (unused1, unused2) -> {}));
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void addLocalOnlyConnectionFailureListener_nullListener_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            wifiManager.addLocalOnlyConnectionFailureListener(
+                Executors.newSingleThreadExecutor(), /* listener= */ null));
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void
+      removeLocalOnlyConnectionFailureListener_nullListener_throwsIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> wifiManager.removeLocalOnlyConnectionFailureListener(/* listener= */ null));
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void triggerLocalConnectionFailure_callbackTriggered() throws Exception {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    TestFailureListener listener = new TestFailureListener();
+    WifiNetworkSpecifier wifiNetworkSpecifier =
+        new WifiNetworkSpecifier.Builder()
+            .setSsid("icanhazinternet")
+            .setBssid(MacAddress.fromString("01:92:83:74:65:AB"))
+            .setWpa3Passphrase("r3@l gud pa$$w0rd")
+            .build();
+
+    wifiManager.addLocalOnlyConnectionFailureListener(executor, listener);
+    ((ShadowWifiManager) Shadow.extract(wifiManager))
+        .triggerLocalConnectionFailure(
+            wifiNetworkSpecifier, WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+    executor.shutdown();
+
+    IncomingFailure incomingFailure = listener.incomingFailures.take();
+    assertThat(incomingFailure.wifiNetworkSpecifier).isEqualTo(wifiNetworkSpecifier);
+    assertThat(incomingFailure.failureReason)
+        .isEqualTo(WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void triggerLocalConnectionFailure_multipleCallbacksRegistered_allCallbacksTriggered()
+      throws Exception {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    TestFailureListener listener1 = new TestFailureListener();
+    TestFailureListener listener2 = new TestFailureListener();
+    WifiNetworkSpecifier wifiNetworkSpecifier =
+        new WifiNetworkSpecifier.Builder()
+            .setSsid("icanhazinternet")
+            .setBssid(MacAddress.fromString("01:92:83:74:65:AB"))
+            .setWpa3Passphrase("r3@l gud pa$$w0rd")
+            .build();
+
+    wifiManager.addLocalOnlyConnectionFailureListener(executor, listener1);
+    wifiManager.addLocalOnlyConnectionFailureListener(executor, listener2);
+    ((ShadowWifiManager) Shadow.extract(wifiManager))
+        .triggerLocalConnectionFailure(
+            wifiNetworkSpecifier, WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+    executor.shutdown();
+
+    IncomingFailure incomingFailure = listener1.incomingFailures.take();
+    assertThat(incomingFailure.wifiNetworkSpecifier).isEqualTo(wifiNetworkSpecifier);
+    assertThat(incomingFailure.failureReason)
+        .isEqualTo(WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+    incomingFailure = listener2.incomingFailures.take();
+    assertThat(incomingFailure.wifiNetworkSpecifier).isEqualTo(wifiNetworkSpecifier);
+    assertThat(incomingFailure.failureReason)
+        .isEqualTo(WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void
+      triggerLocalConnectionFailure_multipleCallbacksRegisteredOnDifferentExecutors_allCallbacksTriggered()
+          throws Exception {
+    ExecutorService executor1 = Executors.newSingleThreadExecutor();
+    ExecutorService executor2 = Executors.newSingleThreadExecutor();
+    TestFailureListener listener1 = new TestFailureListener();
+    TestFailureListener listener2 = new TestFailureListener();
+    WifiNetworkSpecifier wifiNetworkSpecifier =
+        new WifiNetworkSpecifier.Builder()
+            .setSsid("icanhazinternet")
+            .setBssid(MacAddress.fromString("01:92:83:74:65:AB"))
+            .setWpa3Passphrase("r3@l gud pa$$w0rd")
+            .build();
+
+    wifiManager.addLocalOnlyConnectionFailureListener(executor1, listener1);
+    wifiManager.addLocalOnlyConnectionFailureListener(executor2, listener2);
+    ((ShadowWifiManager) Shadow.extract(wifiManager))
+        .triggerLocalConnectionFailure(
+            wifiNetworkSpecifier, WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+    executor1.shutdown();
+    executor2.shutdown();
+
+    IncomingFailure incomingFailure = listener1.incomingFailures.take();
+    assertThat(incomingFailure.wifiNetworkSpecifier).isEqualTo(wifiNetworkSpecifier);
+    assertThat(incomingFailure.failureReason)
+        .isEqualTo(WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+    incomingFailure = listener2.incomingFailures.take();
+    assertThat(incomingFailure.wifiNetworkSpecifier).isEqualTo(wifiNetworkSpecifier);
+    assertThat(incomingFailure.failureReason)
+        .isEqualTo(WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void triggerLocalConnectionFailure_listenerRemovedBeforeTrigger_callbackNotInvoked() {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    TestFailureListener listener = new TestFailureListener();
+    WifiNetworkSpecifier wifiNetworkSpecifier =
+        new WifiNetworkSpecifier.Builder()
+            .setSsid("icanhazinternet")
+            .setBssid(MacAddress.fromString("01:92:83:74:65:AB"))
+            .setWpa3Passphrase("r3@l gud pa$$w0rd")
+            .build();
+
+    wifiManager.addLocalOnlyConnectionFailureListener(executor, listener);
+    wifiManager.removeLocalOnlyConnectionFailureListener(listener);
+    ((ShadowWifiManager) Shadow.extract(wifiManager))
+        .triggerLocalConnectionFailure(
+            wifiNetworkSpecifier, WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION);
+    executor.shutdown();
+
+    assertThat(listener.incomingFailures).isEmpty();
+  }
+
+  private static final class IncomingFailure {
+    private final WifiNetworkSpecifier wifiNetworkSpecifier;
+    private final int failureReason;
+
+    IncomingFailure(WifiNetworkSpecifier wifiNetworkSpecifier, int failureReason) {
+      this.wifiNetworkSpecifier = wifiNetworkSpecifier;
+      this.failureReason = failureReason;
+    }
+  }
+
+  private static final class TestFailureListener implements LocalOnlyConnectionFailureListener {
+    private final BlockingQueue<IncomingFailure> incomingFailures = new LinkedBlockingQueue<>();
+
+    @Override
+    public void onConnectionFailed(WifiNetworkSpecifier wifiNetworkSpecifier, int i) {
+      incomingFailures.add(new IncomingFailure(wifiNetworkSpecifier, i));
+    }
+  }
+
+  private class TestPnoScanResultsCallback implements PnoScanResultsCallback {
+    LinkedBlockingQueue<List<ScanResult>> incomingScanResults = new LinkedBlockingQueue<>();
+    LinkedBlockingQueue<Object> successfulRegistrations = new LinkedBlockingQueue<>();
+    LinkedBlockingQueue<Integer> failedRegistrations = new LinkedBlockingQueue<>();
+    LinkedBlockingQueue<Integer> removedRegistrations = new LinkedBlockingQueue<>();
+
+    @Override
+    public void onScanResultsAvailable(List<ScanResult> scanResults) {
+      incomingScanResults.add(scanResults);
+    }
+
+    @Override
+    public void onRegisterSuccess() {
+      successfulRegistrations.add(new Object());
+    }
+
+    @Override
+    public void onRegisterFailed(int reason) {
+      failedRegistrations.add(reason);
+    }
+
+    @Override
+    public void onRemoved(int reason) {
+      removedRegistrations.add(reason);
+    }
+  }
+
   private void setDeviceOwner() {
     shadowOf(
             (DevicePolicyManager)
-                ApplicationProvider.getApplicationContext()
-                    .getSystemService(Context.DEVICE_POLICY_SERVICE))
-        .setDeviceOwner(
-            new ComponentName(
-                ApplicationProvider.getApplicationContext(), DeviceAdminService.class));
+                getApplicationContext().getSystemService(Context.DEVICE_POLICY_SERVICE))
+        .setDeviceOwner(new ComponentName(getApplicationContext(), DeviceAdminService.class));
   }
 }

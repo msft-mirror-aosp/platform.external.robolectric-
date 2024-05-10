@@ -2,13 +2,12 @@ package org.robolectric.android;
 
 import static android.os.Build.VERSION_CODES.O;
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assume.assumeTrue;
+import static com.google.common.truth.TruthJUnit.assume;
 import static org.robolectric.shadows.ShadowAssetManager.useLegacy;
 
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Build;
-import android.os.Build.VERSION_CODES;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.TextView;
@@ -32,7 +31,7 @@ public class ResourceLoaderTest {
 
   @Before
   public void setUp() {
-    assumeTrue(useLegacy());
+    assume().that(useLegacy()).isTrue();
 
     optsForO = RuntimeEnvironment.getApiLevel() >= O
         ? "nowidecg-lowdr-"
@@ -71,7 +70,11 @@ public class ResourceLoaderTest {
 
   private void checkForPollutionHelper() {
     assertThat(RuntimeEnvironment.getQualifiers())
-        .isEqualTo("en-rUS-ldltr-sw320dp-w320dp-h470dp-normal-notlong-notround-" + optsForO + "port-notnight-mdpi-finger-keyssoft-nokeys-navhidden-nonav-v" + Build.VERSION.RESOURCES_SDK_INT);
+        .isEqualTo(
+            "en-rUS-ldltr-sw320dp-w320dp-h470dp-normal-notlong-notround-"
+                + optsForO
+                + "port-notnight-mdpi-finger-keyssoft-nokeys-navhidden-nonav-v"
+                + Build.VERSION.RESOURCES_SDK_INT);
 
     View view =
         LayoutInflater.from(ApplicationProvider.getApplicationContext())
@@ -80,11 +83,7 @@ public class ResourceLoaderTest {
     assertThat(textView.getText().toString()).isEqualTo("default");
     RuntimeEnvironment.setQualifiers("fr-land"); // testing if this pollutes the other test
     Configuration configuration = Resources.getSystem().getConfiguration();
-    if (RuntimeEnvironment.getApiLevel() <= VERSION_CODES.JELLY_BEAN) {
-      configuration.locale = new Locale("fr", "FR");
-    } else {
-      configuration.setLocale(new Locale("fr", "FR"));
-    }
+    configuration.setLocale(new Locale("fr", "FR"));
     configuration.orientation = Configuration.ORIENTATION_LANDSCAPE;
     Resources.getSystem().updateConfiguration(configuration, null);
   }
@@ -97,7 +96,10 @@ public class ResourceLoaderTest {
     assertThat(resId).isNotNull();
     assertThat(resourceProvider.getResName(resId)).isEqualTo(internalResource);
 
-    Class<?> internalRIdClass = Robolectric.class.getClassLoader().loadClass("com.android.internal.R$" + internalResource.type);
+    Class<?> internalRIdClass =
+        Robolectric.class
+            .getClassLoader()
+            .loadClass("com.android.internal.R$" + internalResource.type);
     int internalResourceId;
     internalResourceId = (Integer) internalRIdClass.getDeclaredField(internalResource.name).get(null);
     assertThat(resId).isEqualTo(internalResourceId);

@@ -1,6 +1,7 @@
 package org.robolectric.shadows;
 
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+import static android.content.pm.PackageManager.EXTRA_VERIFICATION_ID;
 import static android.content.pm.PackageManager.GET_ACTIVITIES;
 import static android.content.pm.PackageManager.GET_CONFIGURATIONS;
 import static android.content.pm.PackageManager.GET_GIDS;
@@ -25,8 +26,7 @@ import static android.content.pm.PackageManager.SIGNATURE_MATCH;
 import static android.content.pm.PackageManager.SIGNATURE_NEITHER_SIGNED;
 import static android.content.pm.PackageManager.SIGNATURE_NO_MATCH;
 import static android.content.pm.PackageManager.SIGNATURE_SECOND_NOT_SIGNED;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.KITKAT;
+import static android.content.pm.PackageManager.VERIFICATION_ALLOW;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static java.util.Arrays.asList;
@@ -34,6 +34,8 @@ import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.Manifest;
 import android.annotation.UserIdInt;
+import android.app.Application;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -66,7 +68,6 @@ import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Binder;
-import android.os.Build;
 import android.os.PersistableBundle;
 import android.os.Process;
 import android.os.RemoteException;
@@ -77,6 +78,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
+import com.google.errorprone.annotations.InlineMe;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -143,7 +145,13 @@ public class ShadowPackageManager {
   static final Map<String, Integer> uidForPackage = new HashMap<>();
   static final Map<Integer, String> namesForUid = new HashMap<>();
   static final Map<Integer, Integer> verificationResults = new HashMap<>();
+
+  @GuardedBy("lock")
   static final Map<Integer, Long> verificationTimeoutExtension = new HashMap<>();
+
+  @GuardedBy("lock")
+  static final Map<Integer, Integer> verificationCodeAtTimeoutExtension = new HashMap<>();
+
   static final Map<String, String> currentToCanonicalNames = new HashMap<>();
   static final Map<String, String> canonicalToCurrentNames = new HashMap<>();
   static final Map<ComponentName, ComponentState> componentList = new LinkedHashMap<>();
@@ -545,7 +553,6 @@ public class ShadowPackageManager {
     private static PersistableBundle deepCopyNullablePersistableBundle(PersistableBundle bundle) {
       return bundle == null ? null : bundle.deepCopy();
     }
-
   }
 
   static final Map<String, PackageSetting> packageSettings = new HashMap<>();
@@ -632,11 +639,7 @@ public class ShadowPackageManager {
   public void addResolveInfoForIntent(Intent intent, ResolveInfo info) {
     info.isDefault = true;
     ComponentInfo[] componentInfos =
-        new ComponentInfo[] {
-          info.activityInfo,
-          info.serviceInfo,
-          Build.VERSION.SDK_INT >= KITKAT ? info.providerInfo : null
-        };
+        new ComponentInfo[] {info.activityInfo, info.serviceInfo, info.providerInfo};
     for (ComponentInfo component : componentInfos) {
       if (component != null && component.applicationInfo != null) {
         component.applicationInfo.flags |= ApplicationInfo.FLAG_INSTALLED;
@@ -892,9 +895,12 @@ public class ShadowPackageManager {
     installPackage(packageInfo);
   }
 
-  /** This method is getting renamed to {link {@link #installPackage}. */
+  /**
+   * @deprecated Use {@link #installPackage} instead.
+   */
   @Deprecated
-  public void addPackage(PackageInfo packageInfo) {
+  @InlineMe(replacement = "this.installPackage(packageInfo)")
+  public final void addPackage(PackageInfo packageInfo) {
     installPackage(packageInfo);
   }
 
@@ -1008,11 +1014,31 @@ public class ShadowPackageManager {
   }
 
   public long getVerificationExtendedTimeout(int id) {
-    Long result = verificationTimeoutExtension.get(id);
-    if (result == null) {
-      return 0;
+    synchronized (lock) {
+      return verificationTimeoutExtension.getOrDefault(id, 0L);
     }
-    return result;
+  }
+
+  public int getVerificationCodeAtTimeoutExtension(int id) {
+    synchronized (lock) {
+      return verificationCodeAtTimeoutExtension.getOrDefault(id, VERIFICATION_ALLOW);
+    }
+  }
+
+  public void triggerInstallVerificationTimeout(Application appContext, int id) {
+    Intent intent = new Intent(Intent.ACTION_PACKAGE_VERIFIED);
+    intent.putExtra(EXTRA_VERIFICATION_ID, id);
+    intent.putExtra(
+        PackageManager.EXTRA_VERIFICATION_RESULT, getVerificationCodeAtTimeoutExtension(id));
+
+    // Send PACKAGE_VERIFIED broadcast to trigger the verification timeout.
+    // Replacement api does not return the actual receiver objects.
+    @SuppressWarnings("deprecation")
+    List<BroadcastReceiver> receivers =
+        ShadowApplication.getShadowInstrumentation().getReceiversForIntent(intent);
+    for (BroadcastReceiver receiver : receivers) {
+      receiver.onReceive(appContext, intent);
+    }
   }
 
   public void setShouldShowRequestPermissionRationale(String permission, boolean show) {
@@ -1069,7 +1095,7 @@ public class ShadowPackageManager {
     return null;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected List<ResolveInfo> queryBroadcastReceivers(
       Intent intent, int flags, @UserIdInt int userId) {
     return null;
@@ -1600,9 +1626,6 @@ public class ShadowPackageManager {
     if (packageName == null) {
       return input;
     }
-    if (packageName == null) {
-      return input;
-    }
     return input.subMap(
         new ComponentName(packageName, ""), new ComponentName(packageName + " ", ""));
   }
@@ -1694,6 +1717,7 @@ public class ShadowPackageManager {
       namesForUid.clear();
       verificationResults.clear();
       verificationTimeoutExtension.clear();
+      verificationCodeAtTimeoutExtension.clear();
       currentToCanonicalNames.clear();
       canonicalToCurrentNames.clear();
       componentList.clear();

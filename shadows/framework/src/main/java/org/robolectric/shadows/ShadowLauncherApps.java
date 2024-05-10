@@ -9,6 +9,8 @@ import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.ComponentName;
 import android.content.IntentSender;
 import android.content.pm.ApplicationInfo;
@@ -26,8 +28,6 @@ import android.os.Looper;
 import android.os.Process;
 import android.os.UserHandle;
 import android.util.Pair;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
@@ -49,10 +49,13 @@ import org.robolectric.util.reflector.ForType;
 public class ShadowLauncherApps {
   private List<ShortcutInfo> shortcuts = new ArrayList<>();
   private final Multimap<UserHandle, String> enabledPackages = HashMultimap.create();
+  private final Multimap<UserHandle, ComponentName> enabledActivities = HashMultimap.create();
   private final Multimap<UserHandle, LauncherActivityInfo> shortcutActivityList =
       HashMultimap.create();
   private final Multimap<UserHandle, LauncherActivityInfo> activityList = HashMultimap.create();
   private final Map<UserHandle, Map<String, ApplicationInfo>> applicationInfoList = new HashMap<>();
+  private final Map<UserHandle, Map<String, Bundle>> suspendedPackageLauncherExtras =
+      new HashMap<>();
 
   private final List<Pair<LauncherApps.Callback, Handler>> callbacks = new ArrayList<>();
   private boolean hasShortcutHostPermission = false;
@@ -97,6 +100,17 @@ public class ShadowLauncherApps {
    */
   public void addEnabledPackage(UserHandle userHandle, String packageName) {
     enabledPackages.put(userHandle, packageName);
+  }
+
+  /**
+   * Sets an activity referenced by ComponentName as enabled, to be checked by {@link
+   * #isActivityEnabled(ComponentName, UserHandle)}.
+   *
+   * @param userHandle the user handle to be set.
+   * @param componentName the component name of the activity to be enabled.
+   */
+  public void setActivityEnabled(UserHandle userHandle, ComponentName componentName) {
+    enabledActivities.put(userHandle, componentName);
   }
 
   /**
@@ -205,11 +219,36 @@ public class ShadowLauncherApps {
         "Package " + packageName + " not found for user " + user.getIdentifier());
   }
 
+  /**
+   * Adds a {@link Bundle} to be retrieved by {@link #getSuspendedPackageLauncherExtras(String,
+   * UserHandle)}.
+   *
+   * @param userHandle the user handle to be added.
+   * @param packageName the package name to be added.
+   * @param bundle the bundle for the extras.
+   */
+  public void addSuspendedPackageLauncherExtras(
+      UserHandle userHandle, String packageName, Bundle bundle) {
+    if (!suspendedPackageLauncherExtras.containsKey(userHandle)) {
+      suspendedPackageLauncherExtras.put(userHandle, new HashMap<>());
+    }
+    suspendedPackageLauncherExtras.get(userHandle).put(packageName, bundle);
+  }
+
   @Implementation(minSdk = P)
   @Nullable
-  protected Bundle getSuspendedPackageLauncherExtras(String packageName, UserHandle user) {
-    throw new UnsupportedOperationException(
-        "This method is not currently supported in Robolectric.");
+  protected Bundle getSuspendedPackageLauncherExtras(String packageName, UserHandle user)
+      throws NameNotFoundException {
+    Map<String, Bundle> map = suspendedPackageLauncherExtras.get(user);
+    if (map != null && map.containsKey(packageName)) {
+      return map.get(packageName);
+    }
+
+    throw new NameNotFoundException(
+        "Suspended package extras for  "
+            + packageName
+            + " not found for user "
+            + user.getIdentifier());
   }
 
   @Implementation(minSdk = Q)
@@ -219,10 +258,9 @@ public class ShadowLauncherApps {
         "This method is not currently supported in Robolectric.");
   }
 
-  @Implementation
+  @Implementation(minSdk = L)
   protected boolean isActivityEnabled(ComponentName component, UserHandle user) {
-    throw new UnsupportedOperationException(
-        "This method is not currently supported in Robolectric.");
+    return enabledActivities.containsEntry(user, component);
   }
 
   /**

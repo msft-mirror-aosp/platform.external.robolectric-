@@ -5,6 +5,7 @@ import static java.util.Arrays.stream;
 
 import com.google.common.base.Splitter;
 import java.lang.reflect.Method;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -12,6 +13,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import javax.annotation.Nonnull;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -237,7 +239,6 @@ public class SandboxTestRunner extends BlockJUnit4ClassRunner {
       @Override
       public void evaluate() throws Throwable {
         PerfStatsCollector perfStatsCollector = PerfStatsCollector.getInstance();
-        perfStatsCollector.reset();
         perfStatsCollector.setEnabled(!perfStatsReporters.isEmpty());
 
         Event initialization = perfStatsCollector.startEvent("initialization");
@@ -259,6 +260,10 @@ public class SandboxTestRunner extends BlockJUnit4ClassRunner {
               HelperTestRunner helperTestRunner = getCachedHelperTestRunner(bootstrappedTestClass);
               helperTestRunner.frameworkMethod = method;
 
+              // The method class may be different than the test class if the method annotated @Test
+              // is declared on a superclass of the test.
+              Class<?> bootstrappedMethodClass =
+                  sandbox.bootstrappedClass(method.getMethod().getDeclaringClass());
               final Method bootstrappedMethod;
               try {
                 Class<?>[] parameterTypes =
@@ -266,10 +271,12 @@ public class SandboxTestRunner extends BlockJUnit4ClassRunner {
                         .map(type -> type.isPrimitive() ? type : sandbox.bootstrappedClass(type))
                         .toArray(Class[]::new);
                 bootstrappedMethod =
-                    bootstrappedTestClass.getMethod(method.getMethod().getName(), parameterTypes);
+                    bootstrappedMethodClass.getMethod(method.getMethod().getName(), parameterTypes);
               } catch (NoSuchMethodException e) {
                 throw new RuntimeException(e);
               }
+
+              Queue<Throwable> thrown = new ArrayDeque<>();
 
               try {
                 // Only invoke @BeforeClass once per class
@@ -281,27 +288,34 @@ public class SandboxTestRunner extends BlockJUnit4ClassRunner {
 
                 Statement statement =
                     helperTestRunner.methodBlock(new FrameworkMethod(bootstrappedMethod));
-
-                // todo: this try/finally probably isn't right -- should mimic RunAfters? [xw]
-                try {
-                  statement.evaluate();
-                } finally {
-                  afterTest(method, bootstrappedMethod);
-                }
+                statement.evaluate();
               } catch (Throwable throwable) {
-                throw Util.sneakyThrow(throwable);
-              } finally {
+                thrown.add(throwable);
+              }
+
+              try {
+                afterTest(method, bootstrappedMethod);
+              } catch (Throwable throwable) {
+                thrown.add(throwable);
+              }
+
+              try {
                 Thread.currentThread().setContextClassLoader(priorContextClassLoader);
-                try {
-                  finallyAfterTest(method);
-                } catch (Exception e) {
-                  e.printStackTrace();
+                finallyAfterTest(method);
+                reportPerfStats(perfStatsCollector);
+                perfStatsCollector.reset();
+              } catch (Throwable throwable) {
+                thrown.add(throwable);
+              }
+
+              Throwable first = thrown.poll();
+              if (first != null) {
+                while (!thrown.isEmpty()) {
+                  first.addSuppressed(thrown.remove());
                 }
+                throw Util.sneakyThrow(first);
               }
             });
-
-        reportPerfStats(perfStatsCollector);
-        perfStatsCollector.reset();
       }
     };
   }

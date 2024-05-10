@@ -5,7 +5,7 @@
 
 Robolectric is the industry-standard unit testing framework for Android. With Robolectric, your tests run in a simulated Android environment inside a JVM, without the overhead and flakiness of an emulator. Robolectric tests routinely run 10x faster than those on cold-started emulators.
 
-Robolectric supports running unit tests for *17* different versions of Android, ranging from Jelly Bean (API level 16) to TIRAMISU (API level 33).
+Robolectric supports running unit tests for *14* different versions of Android, ranging from Lollipop (API level 21) to U (API level 34).
 
 ## Usage
 
@@ -40,23 +40,17 @@ If you'd like to start a new project with Robolectric tests you can refer to `de
 
 ```groovy
 testImplementation "junit:junit:4.13.2"
-testImplementation "org.robolectric:robolectric:4.9.1"
+testImplementation "org.robolectric:robolectric:4.11.1"
 ```
 
 ## Building And Contributing
 
 Robolectric is built using Gradle. Both IntelliJ and Android Studio can import the top-level `build.gradle` file and will automatically generate their project files from it.
 
+To get a high-level overview of Robolectric's architecture, check out
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ### Prerequisites
-
-Those software configurations are recommended and tested.
-
-- JDK 11. Gradle JVM should be set to Java 11.
-  - For command line, make sure the environment variable `JAVA_HOME` is correctly point to JDK11, or set the build environment by [Gradle CLI option](https://docs.gradle.org/current/userguide/command_line_interface.html#sec:environment_options) `-Dorg.gradle.java.home="YourJdkHomePath"` or by [Gradle Properties](https://docs.gradle.org/current/userguide/build_environment.html#sec:gradle_configuration_properties) `org.gradle.java.home=YourJdkHomePath`.
-  - For both IntelliJ and Android Studio, see _Settings/Preferences | Build, Execution, Deployment | Build Tools | Gradle_.
-- Ninja 1.10.2+. Check it by `ninja --version`.
-- CMake 3.22.1+. Check it by `cmake --version`.
-- GCC 7.5.0+ on Linux or Apple clang 12.0.0+ on macOS. Check it by `gcc --version`.
 
 See [Building Robolectric](http://robolectric.org/building-robolectric/) for more details about setting up a build environment for Robolectric.
 
@@ -92,8 +86,7 @@ If you would like to live on the bleeding edge, you can try running against a sn
 repositories {
     maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
 }
-
 dependencies {
-    testImplementation "org.robolectric:robolectric:4.10-SNAPSHOT"
+    testImplementation "org.robolectric:robolectric:4.12-SNAPSHOT"
 }
 ```

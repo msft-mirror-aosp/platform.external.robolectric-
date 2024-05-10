@@ -4,19 +4,21 @@ apply plugin: 'com.android.library'
 apply plugin: AndroidProjectConfigPlugin
 apply plugin: 'kotlin-android'
 apply plugin: "com.diffplug.spotless"
+apply plugin: "io.gitlab.arturbosch.detekt"
 
 spotless {
     kotlin {
         target '**/*.kt'
-        ktfmt('0.34').googleStyle()
+        ktfmt('0.42').googleStyle()
     }
 }
 
 android {
     compileSdk 28
+    namespace 'org.robolectric.integrationtests.compattarget28'
 
     defaultConfig {
-        minSdk 16
+        minSdk 19
         // We must keep targetSdk to 28 for compatibility testing purpose
         targetSdk 28
     }
@@ -26,14 +28,18 @@ android {
         targetCompatibility = '1.8'
     }
 
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
     testOptions.unitTests.includeAndroidResources true
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
+    implementation libs.kotlin.stdlib
 
-    testImplementation project(path: ':testapp')
+    testImplementation project(":testapp")
     testImplementation project(":robolectric")
-    testImplementation "junit:junit:$junitVersion"
-    testImplementation "com.google.truth:truth:$truthVersion"
+    testImplementation libs.junit4
+    testImplementation libs.truth
 }

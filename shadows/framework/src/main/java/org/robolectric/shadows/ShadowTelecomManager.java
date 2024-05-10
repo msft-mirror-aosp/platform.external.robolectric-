@@ -1,13 +1,16 @@
 package org.robolectric.shadows;
 
+import static android.os.Build.VERSION.SDK_INT;
 import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static com.google.common.base.Verify.verifyNotNull;
 
+import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.annotation.TargetApi;
 import android.bluetooth.BluetoothDevice;
@@ -27,7 +30,6 @@ import android.telecom.TelecomManager;
 import android.telecom.VideoProfile;
 import android.text.TextUtils;
 import android.util.ArrayMap;
-import androidx.annotation.Nullable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import java.util.ArrayList;
@@ -77,6 +79,7 @@ public class ShadowTelecomManager {
 
   private final LinkedHashMap<PhoneAccountHandle, PhoneAccount> accounts = new LinkedHashMap<>();
   private final LinkedHashMap<PhoneAccountHandle, String> voicemailNumbers = new LinkedHashMap<>();
+  private final LinkedHashMap<PhoneAccountHandle, String> line1Numbers = new LinkedHashMap<>();
 
   private final List<IncomingCallRecord> incomingCalls = new ArrayList<>();
   private final List<OutgoingCallRecord> outgoingCalls = new ArrayList<>();
@@ -90,6 +93,10 @@ public class ShadowTelecomManager {
   private boolean isInCall;
   private boolean ttySupported;
   private PhoneAccountHandle userSelectedOutgoingPhoneAccount;
+  private boolean readPhoneStatePermission = true;
+  private boolean callPhonePermission = true;
+  private boolean handleMmiValue = false;
+  private ConnectionService connectionService;
 
   public CallRequestMode getCallRequestMode() {
     return callRequestMode;
@@ -167,6 +174,7 @@ public class ShadowTelecomManager {
 
   @Implementation(minSdk = M)
   protected List<PhoneAccountHandle> getCallCapablePhoneAccounts() {
+    checkReadPhoneStatePermission();
     return this.getCallCapablePhoneAccounts(false);
   }
 
@@ -215,6 +223,7 @@ public class ShadowTelecomManager {
 
   @Implementation
   protected PhoneAccount getPhoneAccount(PhoneAccountHandle account) {
+    checkReadPhoneStatePermission();
     return accounts.get(account);
   }
 
@@ -238,7 +247,20 @@ public class ShadowTelecomManager {
 
   @Implementation
   protected void registerPhoneAccount(PhoneAccount account) {
+    account = adjustCapabilities(account);
     accounts.put(account.getAccountHandle(), account);
+  }
+
+  private PhoneAccount adjustCapabilities(PhoneAccount account) {
+    // Mirror the capabilities adjustments done in com.android.server.telecom.PhoneAccountRegistrar.
+    if (SDK_INT >= UPSIDE_DOWN_CAKE
+        && account.hasCapabilities(PhoneAccount.CAPABILITY_SUPPORTS_TRANSACTIONAL_OPERATIONS)
+        && !account.hasCapabilities(PhoneAccount.CAPABILITY_SELF_MANAGED)) {
+      return account.toBuilder()
+          .setCapabilities(account.getCapabilities() | PhoneAccount.CAPABILITY_SELF_MANAGED)
+          .build();
+    }
+    return account;
   }
 
   @Implementation
@@ -324,7 +346,12 @@ public class ShadowTelecomManager {
 
   @Implementation(minSdk = LOLLIPOP_MR1)
   protected String getLine1Number(PhoneAccountHandle accountHandle) {
-    return null;
+    checkReadPhoneStatePermission();
+    return line1Numbers.get(accountHandle);
+  }
+
+  public void setLine1Number(PhoneAccountHandle accountHandle, String number) {
+    line1Numbers.put(accountHandle, number);
   }
 
   /** Sets the return value for {@link TelecomManager#isInCall}. */
@@ -386,6 +413,7 @@ public class ShadowTelecomManager {
 
   @Implementation
   protected boolean isTtySupported() {
+    checkReadPhoneStatePermission();
     return ttySupported;
   }
 
@@ -445,7 +473,7 @@ public class ShadowTelecomManager {
 
     PhoneAccountHandle phoneAccount = verifyNotNull(call.phoneAccount);
     ConnectionRequest request = buildConnectionRequestForIncomingCall(call);
-    ConnectionService service = setupConnectionService(phoneAccount);
+    ConnectionService service = getConnectionService(phoneAccount);
     return service.onCreateIncomingConnection(phoneAccount, request);
   }
 
@@ -464,7 +492,7 @@ public class ShadowTelecomManager {
 
     PhoneAccountHandle phoneAccount = verifyNotNull(call.phoneAccount);
     ConnectionRequest request = buildConnectionRequestForIncomingCall(call);
-    ConnectionService service = setupConnectionService(phoneAccount);
+    ConnectionService service = getConnectionService(phoneAccount);
     service.onCreateIncomingConnectionFailed(phoneAccount, request);
   }
 
@@ -480,6 +508,7 @@ public class ShadowTelecomManager {
 
   @Implementation(minSdk = M)
   protected void placeCall(Uri address, Bundle extras) {
+    checkCallPhonePermission();
     OutgoingCallRecord call = new OutgoingCallRecord(address, extras);
     outgoingCalls.add(call);
 
@@ -523,7 +552,7 @@ public class ShadowTelecomManager {
 
     PhoneAccountHandle phoneAccount = verifyNotNull(call.phoneAccount);
     ConnectionRequest request = buildConnectionRequestForOutgoingCall(call);
-    ConnectionService service = setupConnectionService(phoneAccount);
+    ConnectionService service = getConnectionService(phoneAccount);
     return service.onCreateOutgoingConnection(phoneAccount, request);
   }
 
@@ -542,7 +571,7 @@ public class ShadowTelecomManager {
 
     PhoneAccountHandle phoneAccount = verifyNotNull(call.phoneAccount);
     ConnectionRequest request = buildConnectionRequestForOutgoingCall(call);
-    ConnectionService service = setupConnectionService(phoneAccount);
+    ConnectionService service = getConnectionService(phoneAccount);
     service.onCreateOutgoingConnectionFailed(phoneAccount, request);
   }
 
@@ -579,6 +608,25 @@ public class ShadowTelecomManager {
     return Iterables.getOnlyElement(unknownCalls);
   }
 
+  /**
+   * Set connection service.
+   *
+   * <p>This method can be used in case, when you already created connection service and would like
+   * to use it in telecom manager instead of creating new one.
+   *
+   * @param service existing connection service
+   */
+  public void setConnectionService(ConnectionService service) {
+    connectionService = service;
+  }
+
+  private ConnectionService getConnectionService(PhoneAccountHandle phoneAccount) {
+    if (connectionService == null) {
+      connectionService = setupConnectionService(phoneAccount);
+    }
+    return connectionService;
+  }
+
   private static ConnectionService setupConnectionService(PhoneAccountHandle phoneAccount) {
     ComponentName service = phoneAccount.getComponentName();
     Class<? extends ConnectionService> clazz;
@@ -591,14 +639,18 @@ public class ShadowTelecomManager {
         ServiceController.of(ReflectionHelpers.callConstructor(clazz), null).create().get());
   }
 
+  public void setHandleMmiValue(boolean handleMmiValue) {
+    this.handleMmiValue = handleMmiValue;
+  }
+
   @Implementation
   protected boolean handleMmi(String dialString) {
-    return false;
+    return handleMmiValue;
   }
 
   @Implementation(minSdk = M)
   protected boolean handleMmi(String dialString, PhoneAccountHandle accountHandle) {
-    return false;
+    return handleMmiValue;
   }
 
   @Implementation(minSdk = LOLLIPOP_MR1)
@@ -615,6 +667,10 @@ public class ShadowTelecomManager {
   @Implementation(minSdk = M)
   @HiddenApi
   public void enablePhoneAccount(PhoneAccountHandle handle, boolean isEnabled) {
+    if (getPhoneAccount(handle) == null) {
+      return;
+    }
+    getPhoneAccount(handle).setIsEnabled(isEnabled);
   }
 
   /**
@@ -695,6 +751,36 @@ public class ShadowTelecomManager {
 
       // Keep the deprecated "bundle" name around for a while.
       this.bundle = this.extras;
+    }
+  }
+
+  /**
+   * When set to false methods requiring {@link android.Manifest.permission.READ_PHONE_STATE}
+   * permission will throw a {@link SecurityException}. By default it's set to true for backwards
+   * compatibility.
+   */
+  public void setReadPhoneStatePermission(boolean readPhoneStatePermission) {
+    this.readPhoneStatePermission = readPhoneStatePermission;
+  }
+
+  private void checkReadPhoneStatePermission() {
+    if (!readPhoneStatePermission) {
+      throw new SecurityException();
+    }
+  }
+
+  /**
+   * When set to false methods requiring {@link android.Manifest.permission.CALL_PHONE} permission
+   * will throw a {@link SecurityException}. By default it's set to true for backwards
+   * compatibility.
+   */
+  public void setCallPhonePermission(boolean callPhonePermission) {
+    this.callPhonePermission = callPhonePermission;
+  }
+
+  private void checkCallPhonePermission() {
+    if (!callPhonePermission) {
+      throw new SecurityException();
     }
   }
 

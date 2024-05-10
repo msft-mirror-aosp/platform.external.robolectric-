@@ -5,7 +5,9 @@ import static android.content.pm.ApplicationInfo.FLAG_INSTALLED;
 import static android.content.pm.ApplicationInfo.FLAG_SYSTEM;
 import static android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+import static android.content.pm.PackageManager.DONT_KILL_APP;
 import static android.content.pm.PackageManager.GET_ACTIVITIES;
 import static android.content.pm.PackageManager.GET_META_DATA;
 import static android.content.pm.PackageManager.GET_PROVIDERS;
@@ -13,16 +15,12 @@ import static android.content.pm.PackageManager.GET_RECEIVERS;
 import static android.content.pm.PackageManager.GET_RESOLVED_FILTER;
 import static android.content.pm.PackageManager.GET_SERVICES;
 import static android.content.pm.PackageManager.GET_SIGNATURES;
+import static android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES;
 import static android.content.pm.PackageManager.MATCH_ALL;
 import static android.content.pm.PackageManager.MATCH_DEFAULT_ONLY;
 import static android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS;
 import static android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES;
 import static android.content.pm.PackageManager.SIGNATURE_UNKNOWN_PACKAGE;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
@@ -60,14 +58,14 @@ import android.content.pm.FeatureInfo;
 import android.content.pm.IPackageDataObserver;
 import android.content.pm.IPackageDeleteObserver;
 import android.content.pm.IPackageStatsObserver;
-import android.content.pm.InstallSourceInfo;
 import android.content.pm.InstrumentationInfo;
 import android.content.pm.IntentFilterVerificationInfo;
 import android.content.pm.ModuleInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageItemInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.ApplicationInfoFlags;
+import android.content.pm.PackageManager.ComponentEnabledSetting;
+import android.content.pm.PackageManager.ComponentInfoFlags;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.PackageManager.OnPermissionsChangedListener;
 import android.content.pm.PackageManager.PackageInfoFlags;
@@ -78,6 +76,7 @@ import android.content.pm.PermissionInfo;
 import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
+import android.content.pm.Signature;
 import android.content.pm.VerifierDeviceIdentity;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
@@ -97,7 +96,9 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 import android.util.Pair;
 import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import java.io.File;
 import java.util.ArrayList;
@@ -138,6 +139,8 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @RealObject private ApplicationPackageManager realObject;
   private final List<String> clearedApplicationUserDataPackages = new ArrayList<>();
+  // A map of UserIDs to default browsers.
+  private final HashMap<Integer, String> defaultBrowsers = new HashMap<>();
 
   @Implementation
   public List<PackageInfo> getInstalledPackages(int flags) {
@@ -334,6 +337,33 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     componentList.put(componentName, new ComponentState(newState, flags));
   }
 
+  @Implementation(minSdk = TIRAMISU)
+  protected void setComponentEnabledSettings(List<ComponentEnabledSetting> settings) {
+    for (ComponentEnabledSetting setting : settings) {
+      componentList.put(
+          setting.getComponentName(),
+          new ComponentState(setting.getEnabledState(), setting.getEnabledFlags()));
+    }
+  }
+
+  @Implementation(minSdk = Q)
+  protected void setSyntheticAppDetailsActivityEnabled(String packageName, boolean enabled) {
+    ComponentName componentName =
+        new ComponentName(packageName, PackageManager.APP_DETAILS_ACTIVITY_CLASS_NAME);
+    setComponentEnabledSetting(
+        componentName,
+        enabled ? COMPONENT_ENABLED_STATE_DEFAULT : COMPONENT_ENABLED_STATE_DISABLED,
+        DONT_KILL_APP);
+  }
+
+  @Implementation(minSdk = Q)
+  protected boolean getSyntheticAppDetailsActivityEnabled(String packageName) {
+    ComponentName componentName =
+        new ComponentName(packageName, PackageManager.APP_DETAILS_ACTIVITY_CLASS_NAME);
+    int state = getComponentEnabledSetting(componentName);
+    return state == COMPONENT_ENABLED_STATE_ENABLED || state == COMPONENT_ENABLED_STATE_DEFAULT;
+  }
+
   @Implementation
   protected void setApplicationEnabledSetting(String packageName, int newState, int flags) {
     applicationEnabledSettingMap.put(packageName, newState);
@@ -431,7 +461,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return null;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected ProviderInfo resolveContentProviderAsUser(
       String name, int flags, @UserIdInt int userId) {
     return null;
@@ -553,7 +583,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
     return resolveInfo.activityInfo != null
         || resolveInfo.serviceInfo != null
-        || (VERSION.SDK_INT >= VERSION_CODES.KITKAT && resolveInfo.providerInfo != null);
+        || resolveInfo.providerInfo != null;
   }
 
   private static boolean isFlagSet(long flags, long matchFlag) {
@@ -568,7 +598,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   }
 
   /** Behaves as {@link #queryIntentServices(Intent, int)} and currently ignores userId. */
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected List<ResolveInfo> queryIntentServicesAsUser(Intent intent, int flags, int userId) {
     return queryIntentServices(intent, flags);
   }
@@ -671,7 +701,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return (flags & MATCH_DEFAULT_ONLY) == 0 || resolveInfo.isDefault;
   }
 
-  private <I extends ComponentInfo> List<ResolveInfo> queryComponentsInManifest(
+  private <I extends ComponentInfo> ImmutableList<ResolveInfo> queryComponentsInManifest(
       Intent intent,
       Function<PackageInfo, I[]> componentsInPackage,
       SortedMap<ComponentName, List<IntentFilter>> filters,
@@ -681,7 +711,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
         ComponentName component = getComponentForIntent(intent);
         PackageInfo appPackage = packageInfos.get(component.getPackageName());
         if (appPackage == null) {
-          return Collections.emptyList();
+          return ImmutableList.of();
         }
         I componentInfo = findMatchingComponent(component, componentsInPackage.apply(appPackage));
         if (componentInfo != null) {
@@ -709,15 +739,15 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
                       + componentInfo
                       + " doesn't have required intent filters for "
                       + intent);
-              return Collections.emptyList();
+              return ImmutableList.of();
             }
           }
           ResolveInfo resolveInfo = buildResolveInfo(componentInfo);
           componentSetter.accept(resolveInfo, componentInfo);
-          return new ArrayList<>(Collections.singletonList(resolveInfo));
+          return ImmutableList.copyOf(new ArrayList<>(Collections.singletonList(resolveInfo)));
         }
 
-        return Collections.emptyList();
+        return ImmutableList.of();
       } else {
         List<ResolveInfo> resolveInfoList = new ArrayList<>();
         Map<ComponentName, List<IntentFilter>> filtersForPackage =
@@ -746,15 +776,22 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
             }
           }
         }
-        return resolveInfoList;
+        return ImmutableList.copyOf(resolveInfoList);
       }
     }
   }
 
   /** Behaves as {@link #queryIntentActivities(Intent, int)} and currently ignores userId. */
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected List<ResolveInfo> queryIntentActivitiesAsUser(Intent intent, int flags, int userId) {
     return queryIntentActivities(intent, flags);
+  }
+
+  /** Behaves as {@link #queryIntentActivities(Intent, int)} and currently ignores userId. */
+  @Implementation(minSdk = TIRAMISU)
+  protected List<ResolveInfo> queryIntentActivitiesAsUser(
+      /*Intent*/ Object intent, /*ResolveInfoFlags*/ Object flags, /*int*/ Object userId) {
+    return queryIntentActivities((Intent) intent, (int) ((ResolveInfoFlags) flags).getValue());
   }
 
   /** Returns true if intent has specified a specific component. */
@@ -867,6 +904,14 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
         ActivityInfo::new);
   }
 
+  @Implementation(minSdk = TIRAMISU)
+  protected ActivityInfo getReceiverInfo(
+      /*ComponentName*/ Object component, /*ComponentInfoFlags*/ Object flags)
+      throws NameNotFoundException {
+    return getReceiverInfo(
+        (ComponentName) component, (int) ((ComponentInfoFlags) flags).getValue());
+  }
+
   @Implementation
   protected List<ResolveInfo> queryBroadcastReceivers(Intent intent, int flags) {
     return this.queryIntentComponents(
@@ -880,7 +925,8 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   }
 
   @Implementation(minSdk = TIRAMISU)
-  protected List<ResolveInfo> queryBroadcastReceivers(Object intent, @NonNull Object flags) {
+  protected List<ResolveInfo> queryBroadcastReceivers(
+      /*Intent*/ Object intent, /*ResolveInfoFlags*/ Object flags) {
     return queryBroadcastReceivers((Intent) intent, (int) ((ResolveInfoFlags) flags).getValue());
   }
 
@@ -909,6 +955,13 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
         packageInfo -> packageInfo.services,
         resolveInfo -> resolveInfo.serviceInfo,
         ServiceInfo::new);
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected ServiceInfo getServiceInfo(
+      /*ComponentName*/ Object component, /*ComponentInfoFlags*/ Object flags)
+      throws NameNotFoundException {
+    return getServiceInfo((ComponentName) component, (int) ((ComponentInfoFlags) flags).getValue());
   }
 
   /**
@@ -1005,7 +1058,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @Implementation(minSdk = TIRAMISU)
   protected List<ApplicationInfo> getInstalledApplications(Object flags) {
-    return getInstalledApplications(((ApplicationInfoFlags) flags).getValue());
+    return getInstalledApplications(((PackageManager.ApplicationInfoFlags) flags).getValue());
   }
 
   private List<ApplicationInfo> getInstalledApplications(long flags) {
@@ -1043,8 +1096,12 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   }
 
   @Implementation(minSdk = R)
-  protected Object getInstallSourceInfo(String packageName) {
-    return (InstallSourceInfo) packageInstallSourceInfoMap.get(packageName);
+  protected Object getInstallSourceInfo(String packageName) throws NameNotFoundException {
+    if (!packageInstallSourceInfoMap.containsKey(packageName)) {
+      throw new NameNotFoundException("Package is not installed: " + packageName);
+    } else {
+      return packageInstallSourceInfoMap.get(packageName);
+    }
   }
 
   @Implementation
@@ -1091,10 +1148,13 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     verificationResults.put(id, verificationCode);
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected void extendVerificationTimeout(
       int id, int verificationCodeAtTimeout, long millisecondsToDelay) {
-    verificationTimeoutExtension.put(id, millisecondsToDelay);
+    synchronized (lock) {
+      verificationTimeoutExtension.put(id, millisecondsToDelay);
+      verificationCodeAtTimeoutExtension.put(id, verificationCodeAtTimeout);
+    }
   }
 
   @Override
@@ -1107,10 +1167,12 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @Implementation
   protected void setInstallerPackageName(String targetPackage, String installerPackageName) {
-    packageInstallerMap.put(targetPackage, installerPackageName);
+    synchronized (lock) {
+      packageInstallerMap.put(targetPackage, installerPackageName);
+    }
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected List<ResolveInfo> queryIntentContentProviders(Intent intent, int flags) {
     return this.queryIntentComponents(
         intent,
@@ -1122,7 +1184,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
         ProviderInfo::new);
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected List<ResolveInfo> queryIntentContentProvidersAsUser(
       Intent intent, int flags, int userId) {
     return Collections.emptyList();
@@ -1133,22 +1195,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return null;
   }
 
-  @Implementation(maxSdk = JELLY_BEAN)
-  protected void getPackageSizeInfo(Object pkgName, Object observer) {
-    final PackageStats packageStats = packageStatsMap.get((String) pkgName);
-    new Handler(Looper.getMainLooper())
-        .post(
-            () -> {
-              try {
-                ((IPackageStatsObserver) observer)
-                    .onGetStatsCompleted(packageStats, packageStats != null);
-              } catch (RemoteException remoteException) {
-                remoteException.rethrowFromSystemServer();
-              }
-            });
-  }
-
-  @Implementation(minSdk = JELLY_BEAN_MR1, maxSdk = M)
+  @Implementation(maxSdk = M)
   protected void getPackageSizeInfo(Object pkgName, Object uid, final Object observer) {
     final PackageStats packageStats = packageStatsMap.get((String) pkgName);
     new Handler(Looper.getMainLooper())
@@ -1217,7 +1264,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return getApplicationIcon(info.packageName);
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected Drawable getUserBadgeForDensity(UserHandle userHandle, int i) {
     return null;
   }
@@ -1225,9 +1272,28 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   @Implementation
   protected int checkSignatures(String pkg1, String pkg2) {
     try {
-      PackageInfo packageInfo1 = getPackageInfo(pkg1, GET_SIGNATURES);
-      PackageInfo packageInfo2 = getPackageInfo(pkg2, GET_SIGNATURES);
-      return compareSignature(packageInfo1.signatures, packageInfo2.signatures);
+      PackageInfo packageInfo1 = getPackageInfo(pkg1, GET_SIGNING_CERTIFICATES | GET_SIGNATURES);
+      PackageInfo packageInfo2 = getPackageInfo(pkg2, GET_SIGNING_CERTIFICATES | GET_SIGNATURES);
+      int signaturesResult = compareSignature(packageInfo1.signatures, packageInfo2.signatures);
+      // Use signatures field for older SDKs
+      if (VERSION.SDK_INT < P) {
+        return signaturesResult;
+      } else {
+        // Prefer signingInfo where populated, but fall back to signatures for compatibility
+        Signature[] firstSignatures =
+            packageInfo1.signingInfo == null
+                    || packageInfo1.signingInfo.getApkContentsSigners() == null
+                    || packageInfo1.signingInfo.getApkContentsSigners().length == 0
+                ? packageInfo1.signatures
+                : packageInfo1.signingInfo.getApkContentsSigners();
+        Signature[] secondSignatures =
+            packageInfo2.signingInfo == null
+                    || packageInfo2.signingInfo.getApkContentsSigners() == null
+                    || packageInfo2.signingInfo.getApkContentsSigners().length == 0
+                ? packageInfo2.signatures
+                : packageInfo2.signingInfo.getApkContentsSigners();
+        return compareSignature(firstSignatures, secondSignatures);
+      }
     } catch (NameNotFoundException e) {
       return SIGNATURE_UNKNOWN_PACKAGE;
     }
@@ -1300,7 +1366,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return getLaunchIntentForPackage(packageName, Intent.CATEGORY_LAUNCHER);
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected Intent getLeanbackLaunchIntentForPackage(String packageName) {
     return getLaunchIntentForPackage(packageName, Intent.CATEGORY_LEANBACK_LAUNCHER);
   }
@@ -1330,7 +1396,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return null;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected int getPackageUid(String packageName, int flags) throws NameNotFoundException {
     Integer uid = uidForPackage.get(packageName);
     if (uid == null) {
@@ -1391,6 +1457,14 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     }
     // Maybe query app infos from overridden resolveInfo as well?
     return packageInfo.applicationInfo;
+  }
+
+  @Implementation(minSdk = TIRAMISU)
+  protected ApplicationInfo getApplicationInfo(Object packageName, Object flagsObject)
+      throws NameNotFoundException {
+    Preconditions.checkArgument(flagsObject instanceof PackageManager.ApplicationInfoFlags);
+    PackageManager.ApplicationInfoFlags flags = (PackageManager.ApplicationInfoFlags) flagsObject;
+    return getApplicationInfo((String) packageName, (int) (flags).getValue());
   }
 
   private void applyFlagsToApplicationInfo(@Nullable ApplicationInfo appInfo, long flags)
@@ -1599,7 +1673,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return null;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected List<PackageInfo> getPackagesHoldingPermissions(String[] permissions, int flags) {
     synchronized (lock) {
       List<PackageInfo> packageInfosWithPermissions = new ArrayList<>();
@@ -1632,7 +1706,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   }
 
   /** Behaves as {@link #resolveActivity(Intent, int)} and currently ignores userId. */
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected ResolveInfo resolveActivityAsUser(Intent intent, int flags, int userId) {
     return resolveActivity(intent, flags);
   }
@@ -1743,7 +1817,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     }
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected Resources getResourcesForApplicationAsUser(String appPackageName, int userId)
       throws NameNotFoundException {
     return null;
@@ -1763,7 +1837,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   protected void installPackage(
       Object packageURI, Object observer, Object flags, Object installerPackageName) {}
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected int installExistingPackage(String packageName) throws NameNotFoundException {
     return 0;
   }
@@ -1800,12 +1874,13 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
 
   @Implementation(minSdk = N)
   protected String getDefaultBrowserPackageNameAsUser(int userId) {
-    return null;
+    return defaultBrowsers.get(userId);
   }
 
   @Implementation(minSdk = N)
   protected boolean setDefaultBrowserPackageNameAsUser(String packageName, int userId) {
-    return false;
+    defaultBrowsers.put(userId, packageName);
+    return true;
   }
 
   @Implementation(minSdk = M)
@@ -1914,7 +1989,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     clearPackagePreferredActivitiesInternal(packageName, preferredActivities);
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected ComponentName getHomeActivities(List<ResolveInfo> outActivities) {
     return null;
   }
@@ -1922,7 +1997,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   @Implementation(minSdk = N)
   protected void flushPackageRestrictionsAsUser(int userId) {}
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean setApplicationHiddenSettingAsUser(
       String packageName, boolean hidden, UserHandle user) {
     synchronized (lock) {
@@ -1941,7 +2016,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     }
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean getApplicationHiddenSettingAsUser(String packageName, UserHandle user) {
     // Note that this ignores the UserHandle parameter
     synchronized (lock) {
@@ -1963,16 +2038,16 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
     return false;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean isPackageAvailable(String packageName) {
     return false;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected void addCrossProfileIntentFilter(
       IntentFilter filter, int sourceUserId, int targetUserId, int flags) {}
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected void clearCrossProfileIntentFilters(int sourceUserId) {}
 
   /**
@@ -1995,7 +2070,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
    * <p>This implementation just returns the unbadged icon, as some default implementations add an
    * internal resource to the icon that is unavailable to Robolectric.
    */
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected Drawable getUserBadgedIcon(Drawable icon, UserHandle user) {
     return icon;
   }

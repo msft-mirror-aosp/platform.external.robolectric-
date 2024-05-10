@@ -18,6 +18,7 @@ import android.speech.SpeechRecognizer;
 import android.util.Log;
 import androidx.test.core.app.ApplicationProvider;
 import java.util.ArrayList;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -40,6 +41,11 @@ public class ShadowSpeechRecognizerTest {
     speechRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext);
     listener = new TestRecognitionListener();
     supportCallback = new TestRecognitionSupportCallback();
+  }
+
+  @After
+  public void tearDown() {
+    speechRecognizer.destroy();
   }
 
   @Test
@@ -118,12 +124,27 @@ public class ShadowSpeechRecognizerTest {
     shadowOf(speechRecognizer).triggerOnResults(new Bundle());
     speechRecognizer.stopListening();
 
+    shadowOf(getMainLooper()).idle();
     assertNoErrorLogs();
+  }
+
+  /** Verify that isDestroyed is corrected set by destroy and unset by startListening */
+  @Test
+  public void startListeningThenDestroyAndStartListening() {
+    startListening();
+    assertThat(shadowOf(speechRecognizer).isDestroyed()).isFalse();
+    speechRecognizer.destroy();
+    shadowOf(getMainLooper()).idle();
+    assertThat(shadowOf(speechRecognizer).isDestroyed()).isTrue();
+    startListening();
+    assertThat(shadowOf(speechRecognizer).isDestroyed()).isFalse();
   }
 
   /** Verify the startlistening flow works when using custom component name. */
   @Test
   public void startListeningWithCustomComponent() {
+    speechRecognizer.destroy();
+
     speechRecognizer =
         SpeechRecognizer.createSpeechRecognizer(
             ApplicationProvider.getApplicationContext(),
@@ -145,6 +166,7 @@ public class ShadowSpeechRecognizerTest {
     shadowOf(getMainLooper()).idle();
     assertThat(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
         .isSameInstanceAs(newSpeechRecognizer);
+    newSpeechRecognizer.destroy();
   }
 
   @Test
@@ -158,6 +180,7 @@ public class ShadowSpeechRecognizerTest {
     newSpeechRecognizer.startListening(intent);
     shadowOf(getMainLooper()).idle();
     assertThat(shadowOf(newSpeechRecognizer).getLastRecognizerIntent()).isEqualTo(intent);
+    newSpeechRecognizer.destroy();
   }
 
   private void startListening() {
@@ -224,6 +247,7 @@ public class ShadowSpeechRecognizerTest {
   @Config(minSdk = TIRAMISU)
   @Test
   public void onCreateOnDeviceRecognizer_setsLatestSpeechRecognizer() {
+    speechRecognizer.destroy();
     speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(applicationContext);
 
     assertThat(speechRecognizer)

@@ -10,10 +10,10 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ColorSpace;
+import android.graphics.ColorSpace.Named;
 import android.graphics.ImageDecoder;
 import android.graphics.ImageDecoder.DecodeException;
 import android.graphics.ImageDecoder.Source;
-import android.graphics.Point;
 import android.graphics.Rect;
 import android.util.Size;
 import java.io.ByteArrayInputStream;
@@ -42,12 +42,14 @@ public class ShadowImageDecoder {
     private final int height;
     private final boolean animated = false;
     private final boolean ninePatch;
+    private final String mimeType;
 
     ImgStream() {
       InputStream inputStream = getInputStream();
-      final Point size = ImageUtil.getImageSizeFromStream(inputStream);
-      this.width = size == null ? 10 : size.x;
-      this.height = size == null ? 10 : size.y;
+      final ImageUtil.ImageInfo info = ImageUtil.getImageInfoFromStream(inputStream);
+      this.width = info == null ? 10 : info.width;
+      this.height = info == null ? 10 : info.height;
+      this.mimeType = info == null ? "image/unknown" : info.mimeType;
       if (inputStream instanceof AssetManager.AssetInputStream) {
         ShadowAssetInputStream sis = Shadow.extract(inputStream);
         this.ninePatch = sis.isNinePatch();
@@ -73,6 +75,10 @@ public class ShadowImageDecoder {
     boolean isNinePatch() {
       return ninePatch;
     }
+
+    String mimeType() {
+      return mimeType;
+    }
   }
 
   private static final class CppImageDecoder {
@@ -83,6 +89,9 @@ public class ShadowImageDecoder {
       this.imgStream = imgStream;
     }
 
+    public String getMimeType() {
+      return imgStream.mimeType();
+    }
   }
 
   private static final NativeObjRegistry<CppImageDecoder> NATIVE_IMAGE_DECODER_REGISTRY =
@@ -246,15 +255,15 @@ public class ShadowImageDecoder {
 
   static String ImageDecoder_nGetMimeType(long nativePtr) {
     CppImageDecoder decoder = NATIVE_IMAGE_DECODER_REGISTRY.getNativeObject(nativePtr);
-    // return encodedFormatToString(decoder.mCodec.getEncodedFormat());
-    throw new UnsupportedOperationException();
+    return decoder.getMimeType();
   }
 
   static ColorSpace ImageDecoder_nGetColorSpace(long nativePtr) {
     // auto colorType = codec.computeOutputColorType(codec.getInfo().colorType());
     // sk_sp<SkColorSpace> colorSpace = codec.computeOutputColorSpace(colorType);
     // return GraphicsJNI.getColorSpace(colorSpace, colorType);
-    throw new UnsupportedOperationException();
+    // TODO: fix this properly. Just hardcode to SRGB for now or just remove GraphicsMode.LEGACY
+    return ColorSpace.get(Named.SRGB);
   }
 
   // native method implementations...

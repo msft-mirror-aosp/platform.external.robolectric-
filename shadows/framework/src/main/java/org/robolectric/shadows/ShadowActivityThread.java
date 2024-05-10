@@ -2,6 +2,7 @@ package org.robolectric.shadows;
 
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O_MR1;
+import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 import static org.robolectric.util.ReflectionHelpers.ClassParameter.from;
@@ -13,10 +14,12 @@ import android.app.ActivityThread.ActivityClientRecord;
 import android.app.Application;
 import android.app.Instrumentation;
 import android.app.ResultInfo;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.ComponentInfoFlags;
 import android.content.res.Configuration;
 import android.os.IBinder;
 import com.android.internal.content.ReferrerIntent;
@@ -33,6 +36,7 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.annotation.ReflectorObject;
 import org.robolectric.annotation.Resetter;
+import org.robolectric.util.Logger;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.ForType;
@@ -77,12 +81,29 @@ public class ShadowActivityThread {
             } else if (method.getName().equals("notifyPackageUse")) {
               return null;
             } else if (method.getName().equals("getPackageInstaller")) {
-              return null;
+              try {
+                Class<?> iPackageInstallerClass =
+                    classLoader.loadClass("android.content.pm.IPackageInstaller");
+                return ReflectionHelpers.createNullProxy(iPackageInstallerClass);
+              } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+              }
             } else if (method.getName().equals("hasSystemFeature")) {
               String featureName = (String) args[0];
               return RuntimeEnvironment.getApplication()
                   .getPackageManager()
                   .hasSystemFeature(featureName);
+            } else if (method.getName().equals("getServiceInfo")) {
+              ComponentName componentName = (ComponentName) args[0];
+              if (args[1] instanceof ComponentInfoFlags) {
+                return RuntimeEnvironment.getApplication()
+                    .getPackageManager()
+                    .getServiceInfo(componentName, (ComponentInfoFlags) args[1]);
+              } else {
+                return RuntimeEnvironment.getApplication()
+                    .getPackageManager()
+                    .getServiceInfo(componentName, ((Number) args[1]).intValue());
+              }
             }
             throw new UnsupportedOperationException("sorry, not supporting " + method + " yet!");
           }
@@ -156,7 +177,12 @@ public class ShadowActivityThread {
   /** Update's ActivityThread's list of active Activities */
   void registerActivityLaunch(
       Intent intent, ActivityInfo activityInfo, Activity activity, IBinder token) {
-    ActivityClientRecord record = new ActivityClientRecord();
+    ActivityClientRecord record;
+    if (RuntimeEnvironment.getApiLevel() >= P) {
+      record = new ActivityClientRecord();
+    } else {
+      record = ReflectionHelpers.callConstructor(ActivityClientRecord.class);
+    }
     ActivityClientRecordReflector recordReflector =
         reflector(ActivityClientRecordReflector.class, record);
     recordReflector.setToken(token);
@@ -273,8 +299,13 @@ public class ShadowActivityThread {
 
   @Resetter
   public static void reset() {
-    reflector(_ActivityThread_.class, RuntimeEnvironment.getActivityThread())
-        .getActivities()
-        .clear();
+    Object activityThread = RuntimeEnvironment.getActivityThread();
+    if (activityThread == null) {
+      Logger.warn(
+          "RuntimeEnvironment.getActivityThread() is null, an error likely occurred during test"
+              + " initialization.");
+    } else {
+      reflector(_ActivityThread_.class, activityThread).getActivities().clear();
+    }
   }
 }

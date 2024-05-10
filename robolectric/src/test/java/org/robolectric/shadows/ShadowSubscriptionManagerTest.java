@@ -2,7 +2,9 @@ package org.robolectric.shadows;
 
 import static android.content.Context.TELEPHONY_SUBSCRIPTION_SERVICE;
 import static android.os.Build.VERSION_CODES.N;
+import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.P;
+import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
@@ -10,6 +12,8 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.robolectric.Shadows.shadowOf;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -90,6 +94,29 @@ public class ShadowSubscriptionManagerTest {
   }
 
   @Test
+  public void
+      addOnSubscriptionsChangedListener_whenHasExecutorParameter_shouldCallbackImmediately() {
+    DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
+    shadowOf(subscriptionManager)
+        .addOnSubscriptionsChangedListener(new Handler(Looper.getMainLooper())::post, listener);
+
+    assertThat(listener.subscriptionChangedCount).isEqualTo(1);
+  }
+
+  @Test
+  public void addOnSubscriptionsChangedListener_whenHasExecutorParameter_shouldAddListener() {
+    DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
+    shadowOf(subscriptionManager)
+        .addOnSubscriptionsChangedListener(new Handler(Looper.getMainLooper())::post, listener);
+
+    shadowOf(subscriptionManager)
+        .setActiveSubscriptionInfos(
+            SubscriptionInfoBuilder.newBuilder().setId(123).buildSubscriptionInfo());
+
+    assertThat(listener.subscriptionChangedCount).isEqualTo(2);
+  }
+
+  @Test
   public void removeOnSubscriptionsChangedListener_shouldRemoveListener() {
     DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
     DummySubscriptionsChangedListener listener2 = new DummySubscriptionsChangedListener();
@@ -106,6 +133,21 @@ public class ShadowSubscriptionManagerTest {
   }
 
   @Test
+  public void hasOnSubscriptionsChangedListener_whenListenerNotExist_shouldReturnFalse() {
+    DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
+
+    assertThat(shadowOf(subscriptionManager).hasOnSubscriptionsChangedListener(listener)).isFalse();
+  }
+
+  @Test
+  public void hasOnSubscriptionsChangedListener_whenListenerExist_shouldReturnTrue() {
+    DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
+    shadowOf(subscriptionManager).addOnSubscriptionsChangedListener(listener);
+
+    assertThat(shadowOf(subscriptionManager).hasOnSubscriptionsChangedListener(listener)).isTrue();
+  }
+
+  @Test
   public void getActiveSubscriptionInfo_shouldReturnInfoWithSubId() {
     SubscriptionInfo expectedSubscriptionInfo =
         SubscriptionInfoBuilder.newBuilder().setId(123).buildSubscriptionInfo();
@@ -113,6 +155,16 @@ public class ShadowSubscriptionManagerTest {
 
     assertThat(shadowOf(subscriptionManager).getActiveSubscriptionInfo(123))
         .isSameInstanceAs(expectedSubscriptionInfo);
+  }
+
+  @Test
+  public void getActiveSubscriptionInfo_shouldThrowExceptionWhenNoPermissions() {
+    shadowOf(subscriptionManager).setReadPhoneStatePermission(false);
+    assertThrows(
+        SecurityException.class,
+        () ->
+            shadowOf(subscriptionManager)
+                .getActiveSubscriptionInfo(SubscriptionManager.DEFAULT_SUBSCRIPTION_ID));
   }
 
   @Test
@@ -235,6 +287,43 @@ public class ShadowSubscriptionManagerTest {
   }
 
   @Test
+  @Config(minSdk = O_MR1)
+  public void getAccessibleSubscriptionInfoList() {
+    SubscriptionInfo expectedSubscriptionInfo =
+        SubscriptionInfoBuilder.newBuilder().setId(123).setIsEmbedded(true).buildSubscriptionInfo();
+
+    // Default
+    assertThat(shadowOf(subscriptionManager).getAccessibleSubscriptionInfoList()).isEmpty();
+
+    // Null vararg
+    shadowOf(subscriptionManager).setAccessibleSubscriptionInfos();
+    assertThat(shadowOf(subscriptionManager).getAccessibleSubscriptionInfoList()).isEmpty();
+
+    // A specific subscription
+    shadowOf(subscriptionManager).setAccessibleSubscriptionInfos(expectedSubscriptionInfo);
+    assertThat(shadowOf(subscriptionManager).getAccessibleSubscriptionInfoList())
+        .containsExactly(expectedSubscriptionInfo);
+  }
+
+  @Test
+  @Config(minSdk = O_MR1)
+  public void setAccessibleSubscriptionInfoList_triggersSubscriptionsChanged() {
+    DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
+    subscriptionManager.addOnSubscriptionsChangedListener(listener);
+    // Invoked upon registration, but that's not important for this test
+    int initialInvocationCount = listener.subscriptionChangedCount;
+
+    shadowOf(subscriptionManager)
+        .setAccessibleSubscriptionInfos(
+            SubscriptionInfoBuilder.newBuilder()
+                .setId(123)
+                .setIsEmbedded(true)
+                .buildSubscriptionInfo());
+
+    assertThat(listener.subscriptionChangedCount - initialInvocationCount).isEqualTo(1);
+  }
+
+  @Test
   public void getAvailableSubscriptionInfoList() {
     SubscriptionInfo expectedSubscriptionInfo =
         SubscriptionInfoBuilder.newBuilder().setId(123).buildSubscriptionInfo();
@@ -251,6 +340,20 @@ public class ShadowSubscriptionManagerTest {
     assertThat(shadowOf(subscriptionManager).getAvailableSubscriptionInfoList()).hasSize(1);
     assertThat(shadowOf(subscriptionManager).getAvailableSubscriptionInfoList().get(0))
         .isSameInstanceAs(expectedSubscriptionInfo);
+  }
+
+  @Test
+  public void setAvailableSubscriptionInfoList_triggersSubscriptionsChanged() {
+    DummySubscriptionsChangedListener listener = new DummySubscriptionsChangedListener();
+    subscriptionManager.addOnSubscriptionsChangedListener(listener);
+    // Invoked upon registration, but that's not important for this test
+    int initialInvocationCount = listener.subscriptionChangedCount;
+
+    shadowOf(subscriptionManager)
+        .setAvailableSubscriptionInfos(
+            SubscriptionInfoBuilder.newBuilder().setId(123).buildSubscriptionInfo());
+
+    assertThat(listener.subscriptionChangedCount - initialInvocationCount).isEqualTo(1);
   }
 
   @Test
@@ -329,6 +432,81 @@ public class ShadowSubscriptionManagerTest {
         .setPhoneNumber(SubscriptionManager.DEFAULT_SUBSCRIPTION_ID, "123");
     assertThat(subscriptionManager.getPhoneNumber(SubscriptionManager.DEFAULT_SUBSCRIPTION_ID))
         .isEqualTo("123");
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getPhoneNumber_shouldThrowExceptionWhenNoPermissions() {
+    shadowOf(subscriptionManager).setReadPhoneNumbersPermission(false);
+    assertThrows(
+        SecurityException.class,
+        () ->
+            shadowOf(subscriptionManager)
+                .getPhoneNumber(SubscriptionManager.DEFAULT_SUBSCRIPTION_ID));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getPhoneNumberWithSource_phoneNumberNotSet_returnsEmptyString() {
+    assertThat(
+            subscriptionManager.getPhoneNumber(
+                SubscriptionManager.DEFAULT_SUBSCRIPTION_ID,
+                SubscriptionManager.PHONE_NUMBER_SOURCE_UICC))
+        .isEqualTo("");
+    assertThat(
+            subscriptionManager.getPhoneNumber(
+                SubscriptionManager.DEFAULT_SUBSCRIPTION_ID,
+                SubscriptionManager.PHONE_NUMBER_SOURCE_CARRIER))
+        .isEqualTo("");
+    assertThat(
+            subscriptionManager.getPhoneNumber(
+                SubscriptionManager.DEFAULT_SUBSCRIPTION_ID,
+                SubscriptionManager.PHONE_NUMBER_SOURCE_IMS))
+        .isEqualTo("");
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getPhoneNumberWithSource_setPhoneNumber_returnsPhoneNumber() {
+    shadowOf(subscriptionManager)
+        .setPhoneNumber(SubscriptionManager.DEFAULT_SUBSCRIPTION_ID, "123");
+    assertThat(
+            subscriptionManager.getPhoneNumber(
+                SubscriptionManager.DEFAULT_SUBSCRIPTION_ID,
+                SubscriptionManager.PHONE_NUMBER_SOURCE_UICC))
+        .isEqualTo("123");
+    assertThat(
+            subscriptionManager.getPhoneNumber(
+                SubscriptionManager.DEFAULT_SUBSCRIPTION_ID,
+                SubscriptionManager.PHONE_NUMBER_SOURCE_CARRIER))
+        .isEqualTo("123");
+    assertThat(
+            subscriptionManager.getPhoneNumber(
+                SubscriptionManager.DEFAULT_SUBSCRIPTION_ID,
+                SubscriptionManager.PHONE_NUMBER_SOURCE_IMS))
+        .isEqualTo("123");
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void setIsOpportunistic_shouldReturnFalse() {
+    assertThat(
+            ShadowSubscriptionManager.SubscriptionInfoBuilder.newBuilder()
+                .setIsOpportunistic(false)
+                .buildSubscriptionInfo()
+                .isOpportunistic())
+        .isFalse();
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void setIsOpportunistic_shouldReturnTrue() {
+    assertThat(
+            ShadowSubscriptionManager.SubscriptionInfoBuilder.newBuilder()
+                .setIsOpportunistic(true)
+                .buildSubscriptionInfo()
+                .isOpportunistic())
+        .isTrue();
   }
 
   private static class DummySubscriptionsChangedListener

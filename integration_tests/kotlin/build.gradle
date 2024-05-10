@@ -1,0 +1,25 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.robolectric.gradle.RoboJavaModulePlugin
+apply plugin: RoboJavaModulePlugin
+apply plugin: 'kotlin'
+compileKotlin {
+    compilerOptions.jvmTarget = JvmTarget.JVM_1_8
+}
+
+compileTestKotlin {
+    compilerOptions.jvmTarget = JvmTarget.JVM_1_8
+}
+
+dependencies {
+    api project(":robolectric")
+    compileOnly AndroidSdk.MAX_SDK.coordinates
+    implementation libs.androidx.annotation
+
+    testCompileOnly AndroidSdk.MAX_SDK.coordinates
+    testRuntimeOnly AndroidSdk.MAX_SDK.coordinates
+    testImplementation libs.kotlin.stdlib
+    testImplementation libs.kotlinx.coroutines.android
+    testImplementation libs.junit4
+    testImplementation libs.truth
+    testImplementation "androidx.test:core:$axtCoreVersion@aar"
+}

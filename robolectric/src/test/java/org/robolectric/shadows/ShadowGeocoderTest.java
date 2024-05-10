@@ -20,7 +20,6 @@ import org.junit.runner.RunWith;
 /** Unit test for {@link ShadowGeocoder}. */
 @RunWith(AndroidJUnit4.class)
 public class ShadowGeocoderTest {
-
   private Geocoder geocoder;
 
   @Before

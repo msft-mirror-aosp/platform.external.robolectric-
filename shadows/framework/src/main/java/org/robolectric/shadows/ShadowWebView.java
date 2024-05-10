@@ -542,7 +542,7 @@ public class ShadowWebView extends ShadowViewGroup {
     currentFavicon = favicon;
   }
 
-  @Implementation(minSdk = Build.VERSION_CODES.KITKAT)
+  @Implementation
   protected void evaluateJavascript(String script, ValueCallback<String> callback) {
     this.lastEvaluatedJavascript = script;
     this.lastEvaluatedJavascriptCallback = callback;
@@ -569,7 +569,7 @@ public class ShadowWebView extends ShadowViewGroup {
    *
    * @param canGoBack Value to return from {@code android.webkit.WebView#canGoBack()}
    * @deprecated Do not depend on this method as it will be removed in a future update. The
-   *     preferered method is to populate a fake web history to use for going back.
+   *     preferred method is to populate a fake web history to use for going back.
    */
   @Deprecated
   public void setCanGoBack(boolean canGoBack) {
@@ -645,7 +645,7 @@ public class ShadowWebView extends ShadowViewGroup {
     packageInfo = null;
   }
 
-  @Implementation(minSdk = VERSION_CODES.KITKAT)
+  @Implementation
   public static void setWebContentsDebuggingEnabled(boolean enabled) {}
 
   /**

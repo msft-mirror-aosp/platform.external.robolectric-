@@ -4,11 +4,12 @@ apply plugin: 'com.android.library'
 apply plugin: AndroidProjectConfigPlugin
 
 android {
-    compileSdk 33
+    compileSdk 34
+    namespace 'org.robolectric.integrationtests.agp'
 
     defaultConfig {
-        minSdk 16
-        targetSdk 33
+        minSdk 19
+        targetSdk 34
     }
 
     compileOptions {
@@ -21,12 +22,12 @@ android {
 
 dependencies {
     // Testing dependencies
-    testImplementation project(path: ':testapp')
+    testImplementation project(":testapp")
     testImplementation project(":robolectric")
     testImplementation project(":integration_tests:agp:testsupport")
 
-    testImplementation "junit:junit:${junitVersion}"
-    testImplementation("androidx.test:core:$axtCoreVersion")
-    testImplementation("androidx.test:runner:$axtRunnerVersion")
-    testImplementation("androidx.test.ext:junit:$axtJunitVersion")
+    testImplementation libs.junit4
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.runner
+    testImplementation libs.androidx.test.ext.junit
 }

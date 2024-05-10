@@ -1,12 +1,16 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
+import static android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+import static android.content.res.Configuration.ORIENTATION_PORTRAIT;
 import static android.os.Build.VERSION_CODES.P;
+import static java.util.Objects.requireNonNull;
 import static org.robolectric.shadow.api.Shadow.extract;
 import static org.robolectric.shadow.api.Shadow.invokeConstructor;
 import static org.robolectric.shadows.ShadowLooper.shadowMainLooper;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
+import android.annotation.Nullable;
+import android.annotation.RequiresApi;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.hardware.display.BrightnessChangeEvent;
@@ -17,8 +21,8 @@ import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.DisplayInfo;
 import android.view.Surface;
-import androidx.annotation.RequiresApi;
 import com.google.auto.value.AutoBuilder;
+import java.util.HashMap;
 import java.util.List;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.Bootstrap;
@@ -27,6 +31,7 @@ import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
+import org.robolectric.annotation.Resetter;
 import org.robolectric.res.Qualifiers;
 import org.robolectric.util.Consumer;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
@@ -37,12 +42,21 @@ import org.robolectric.util.reflector.ForType;
  * For tests, display properties may be changed and devices may be added or removed
  * programmatically.
  */
-@Implements(value = DisplayManager.class, minSdk = JELLY_BEAN_MR1, looseSignatures = true)
+@Implements(value = DisplayManager.class, looseSignatures = true)
 public class ShadowDisplayManager {
 
   @RealObject private DisplayManager realDisplayManager;
 
   private Context context;
+
+  private static final String DEFAULT_DISPLAY_NAME = "Built-in screen";
+
+  private static final HashMap<Integer, Boolean> displayIsNaturallyPortrait = new HashMap<>();
+
+  @Resetter
+  public static void reset() {
+    displayIsNaturallyPortrait.clear();
+  }
 
   @Implementation
   protected void __constructor__(Context context) {
@@ -61,29 +75,58 @@ public class ShadowDisplayManager {
    * @return the new display's ID
    */
   public static int addDisplay(String qualifiersStr) {
-    int id = getShadowDisplayManagerGlobal().addDisplay(createDisplayInfo(qualifiersStr, null));
+    return addDisplay(qualifiersStr, DEFAULT_DISPLAY_NAME);
+  }
+
+  /**
+   * Adds a simulated display and drain the main looper queue to ensure all the callbacks are
+   * processed.
+   *
+   * @param qualifiersStr the {@link Qualifiers} string representing characteristics of the new
+   *     display.
+   * @param displayName the display name to use while creating the display
+   * @return the new display's ID
+   */
+  public static int addDisplay(String qualifiersStr, String displayName) {
+    int id =
+        getShadowDisplayManagerGlobal()
+            .addDisplay(createDisplayInfo(qualifiersStr, null, displayName));
     shadowMainLooper().idle();
     return id;
   }
+
+  static IllegalStateException configureDefaultDisplayCallstack;
 
   /** internal only */
   public static void configureDefaultDisplay(
       Configuration configuration, DisplayMetrics displayMetrics) {
     ShadowDisplayManagerGlobal shadowDisplayManagerGlobal = getShadowDisplayManagerGlobal();
-    if (DisplayManagerGlobal.getInstance().getDisplayIds().length != 0) {
-      throw new IllegalStateException("this method should only be called by Robolectric");
+    if (DisplayManagerGlobal.getInstance().getDisplayIds().length == 0) {
+      configureDefaultDisplayCallstack =
+          new IllegalStateException("configureDefaultDisplay should only be called once");
+    } else {
+      configureDefaultDisplayCallstack.initCause(
+          new IllegalStateException(
+              "configureDefaultDisplay was called a second time",
+              configureDefaultDisplayCallstack));
+      throw configureDefaultDisplayCallstack;
     }
 
-    shadowDisplayManagerGlobal.addDisplay(createDisplayInfo(configuration, displayMetrics));
+    shadowDisplayManagerGlobal.addDisplay(
+        createDisplayInfo(
+            configuration, displayMetrics, /* isNaturallyPortrait= */ true, DEFAULT_DISPLAY_NAME));
   }
 
   private static DisplayInfo createDisplayInfo(
-      Configuration configuration, DisplayMetrics displayMetrics) {
+      Configuration configuration,
+      DisplayMetrics displayMetrics,
+      boolean isNaturallyPortrait,
+      String name) {
     int widthPx = (int) (configuration.screenWidthDp * displayMetrics.density);
     int heightPx = (int) (configuration.screenHeightDp * displayMetrics.density);
 
     DisplayInfo displayInfo = new DisplayInfo();
-    displayInfo.name = "Built-in screen";
+    displayInfo.name = name;
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       displayInfo.uniqueId = "screen0";
     }
@@ -93,9 +136,9 @@ public class ShadowDisplayManager {
     displayInfo.logicalWidth = widthPx;
     displayInfo.logicalHeight = heightPx;
     displayInfo.rotation =
-        configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-            ? Surface.ROTATION_0
-            : Surface.ROTATION_90;
+        configuration.orientation == ORIENTATION_PORTRAIT
+            ? (isNaturallyPortrait ? Surface.ROTATION_0 : Surface.ROTATION_90)
+            : (isNaturallyPortrait ? Surface.ROTATION_90 : Surface.ROTATION_0);
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       displayInfo.modeId = 0;
       displayInfo.defaultModeId = 0;
@@ -108,23 +151,27 @@ public class ShadowDisplayManager {
       displayInfo.state = Display.STATE_ON;
     }
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-      displayInfo.getAppMetrics(displayMetrics);
-    }
-
     return displayInfo;
   }
 
-  private static DisplayInfo createDisplayInfo(String qualifiersStr, DisplayInfo baseDisplayInfo) {
+  private static DisplayInfo createDisplayInfo(String qualifiersStr, @Nullable Integer displayId) {
+    return createDisplayInfo(qualifiersStr, displayId, DEFAULT_DISPLAY_NAME);
+  }
+
+  private static DisplayInfo createDisplayInfo(
+      String qualifiersStr, @Nullable Integer displayId, String name) {
+    DisplayInfo baseDisplayInfo =
+        displayId != null ? DisplayManagerGlobal.getInstance().getDisplayInfo(displayId) : null;
     Configuration configuration = new Configuration();
     DisplayMetrics displayMetrics = new DisplayMetrics();
 
+    boolean isNaturallyPortrait =
+        requireNonNull(displayIsNaturallyPortrait.getOrDefault(displayId, true));
     if (qualifiersStr.startsWith("+") && baseDisplayInfo != null) {
       configuration.orientation =
-          (baseDisplayInfo.rotation == Surface.ROTATION_0
-                  || baseDisplayInfo.rotation == Surface.ROTATION_180)
-              ? Configuration.ORIENTATION_PORTRAIT
-              : Configuration.ORIENTATION_LANDSCAPE;
+          isRotated(baseDisplayInfo.rotation)
+              ? (isNaturallyPortrait ? ORIENTATION_LANDSCAPE : ORIENTATION_PORTRAIT)
+              : (isNaturallyPortrait ? ORIENTATION_PORTRAIT : ORIENTATION_LANDSCAPE);
       configuration.screenWidthDp =
           baseDisplayInfo.logicalWidth
               * DisplayMetrics.DENSITY_DEFAULT
@@ -142,7 +189,11 @@ public class ShadowDisplayManager {
     Bootstrap.applyQualifiers(
         qualifiersStr, RuntimeEnvironment.getApiLevel(), configuration, displayMetrics);
 
-    return createDisplayInfo(configuration, displayMetrics);
+    return createDisplayInfo(configuration, displayMetrics, isNaturallyPortrait, name);
+  }
+
+  private static boolean isRotated(int rotation) {
+    return rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270;
   }
 
   private static void fixNominalDimens(DisplayInfo displayInfo) {
@@ -168,9 +219,29 @@ public class ShadowDisplayManager {
    *     display
    */
   public static void changeDisplay(int displayId, String qualifiersStr) {
-    DisplayInfo baseDisplayInfo = DisplayManagerGlobal.getInstance().getDisplayInfo(displayId);
-    DisplayInfo displayInfo = createDisplayInfo(qualifiersStr, baseDisplayInfo);
+    DisplayInfo displayInfo = createDisplayInfo(qualifiersStr, displayId);
     getShadowDisplayManagerGlobal().changeDisplay(displayId, displayInfo);
+    shadowMainLooper().idle();
+  }
+
+  /**
+   * Changes the display to be naturally portrait or landscape. This will ensure that the rotation
+   * is configured consistently with orientation when the orientation is configured by {@link
+   * #changeDisplay}, e.g. if the display is naturally portrait and the orientation is configured as
+   * landscape the rotation will be set to {@link Surface#ROTATION_90}.
+   */
+  public static void setNaturallyPortrait(int displayId, boolean isNaturallyPortrait) {
+    displayIsNaturallyPortrait.put(displayId, isNaturallyPortrait);
+    changeDisplay(
+        displayId,
+        config -> {
+          boolean isRotated = isRotated(config.rotation);
+          boolean isPortrait = config.logicalHeight > config.logicalWidth;
+          if ((isNaturallyPortrait ^ isPortrait) != isRotated) {
+            config.rotation =
+                (isNaturallyPortrait ^ isPortrait) ? Surface.ROTATION_90 : Surface.ROTATION_0;
+          }
+        });
     shadowMainLooper().idle();
   }
 
@@ -271,10 +342,6 @@ public class ShadowDisplayManager {
   }
 
   private static ShadowDisplayManagerGlobal getShadowDisplayManagerGlobal() {
-    if (Build.VERSION.SDK_INT < JELLY_BEAN_MR1) {
-      throw new UnsupportedOperationException("multiple displays not supported in Jelly Bean");
-    }
-
     return extract(DisplayManagerGlobal.getInstance());
   }
 

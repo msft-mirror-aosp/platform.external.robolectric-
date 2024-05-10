@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.R;
@@ -11,13 +9,17 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
+import android.os.Build;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import javax.annotation.Nullable;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
@@ -29,19 +31,23 @@ import org.robolectric.util.reflector.Direct;
 import org.robolectric.util.reflector.ForType;
 
 /** Shadow implementation of {@link BluetoothGatt}. */
-@Implements(value = BluetoothGatt.class, minSdk = JELLY_BEAN_MR2)
+@Implements(value = BluetoothGatt.class)
 public class ShadowBluetoothGatt {
 
   private static final String NULL_CALLBACK_MSG = "BluetoothGattCallback can not be null.";
-
+  
   private BluetoothGattCallback bluetoothGattCallback;
   private int connectionPriority = BluetoothGatt.CONNECTION_PRIORITY_BALANCED;
   private boolean isConnected = false;
   private boolean isClosed = false;
   private byte[] writtenBytes;
   private byte[] readBytes;
+  // TODO: ShadowBluetoothGatt.services should be removed in favor of just using the real
+  // BluetoothGatt.mServices.
   private final Set<BluetoothGattService> discoverableServices = new HashSet<>();
   private final ArrayList<BluetoothGattService> services = new ArrayList<>();
+  private final Set<BluetoothGattCharacteristic> characteristicNotificationEnableSet =
+      new HashSet<>();
 
   @RealObject private BluetoothGatt realBluetoothGatt;
   @ReflectorObject protected BluetoothGattReflector bluetoothGattReflector;
@@ -88,7 +94,7 @@ public class ShadowBluetoothGatt {
                   iBluetoothGattClass, BluetoothDevice.class, Integer.TYPE, Integer.TYPE
                 },
                 new Object[] {null, device, 0, 0});
-      } else if (apiLevel >= LOLLIPOP) {
+      } else {
         bluetoothGatt =
             Shadow.newInstance(
                 BluetoothGatt.class,
@@ -96,12 +102,6 @@ public class ShadowBluetoothGatt {
                   Context.class, iBluetoothGattClass, BluetoothDevice.class, Integer.TYPE
                 },
                 new Object[] {RuntimeEnvironment.getApplication(), null, device, 0});
-      } else {
-        bluetoothGatt =
-            Shadow.newInstance(
-                BluetoothGatt.class,
-                new Class<?>[] {Context.class, iBluetoothGattClass, BluetoothDevice.class},
-                new Object[] {RuntimeEnvironment.getApplication(), null, device});
       }
 
       PerfStatsCollector.getInstance().incrementCount("constructShadowBluetoothGatt");
@@ -119,7 +119,7 @@ public class ShadowBluetoothGatt {
    * @return true, if a {@link BluetoothGattCallback} has been set by {@link
    *     ShadowBluetoothGatt#setGattCallback}
    */
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected boolean connect() {
     if (this.getGattCallback() != null) {
       this.isConnected = true;
@@ -134,10 +134,10 @@ public class ShadowBluetoothGatt {
   /**
    * Disconnects an established connection, or cancels a connection attempt currently in progress.
    */
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected void disconnect() {
     bluetoothGattReflector.disconnect();
-    if (this.getGattCallback() != null && this.isConnected) {
+    if (this.isCallbackAppropriate()) {
       this.getGattCallback()
           .onConnectionStateChange(
               this.realBluetoothGatt,
@@ -148,7 +148,7 @@ public class ShadowBluetoothGatt {
   }
 
   /** Close this Bluetooth GATT client. */
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected void close() {
     bluetoothGattReflector.close();
     this.isClosed = true;
@@ -176,6 +176,21 @@ public class ShadowBluetoothGatt {
   }
 
   /**
+   * Overrides {@link BluetoothGatt#requestMtu} to always fail before {@link
+   * ShadowBlueoothGatt.setGattCallback} is called, and always succeed after.
+   */
+  @Implementation(minSdk = O)
+  protected boolean requestMtu(int mtu) {
+    if (this.bluetoothGattCallback == null) {
+      return false;
+    }
+
+    this.bluetoothGattCallback.onMtuChanged(
+        this.realBluetoothGatt, mtu, BluetoothGatt.GATT_SUCCESS);
+    return true;
+  }
+
+  /**
    * Overrides {@link BluetoothGatt#discoverServices} to always return false unless there are
    * discoverable services made available by {@link ShadowBluetoothGatt#addDiscoverableService}
    *
@@ -185,6 +200,7 @@ public class ShadowBluetoothGatt {
   protected boolean discoverServices() {
     this.services.clear();
     if (!this.discoverableServices.isEmpty()) {
+      // TODO: Don't store the services in the shadow.
       this.services.addAll(this.discoverableServices);
 
       if (this.getGattCallback() != null) {
@@ -204,7 +220,67 @@ public class ShadowBluetoothGatt {
    */
   @Implementation(minSdk = O)
   protected List<BluetoothGattService> getServices() {
+    // TODO: Remove this method when real BluetoothGatt#getServices() works.
     return new ArrayList<>(this.services);
+  }
+
+  /**
+   * Overrides {@link BluetoothGatt#getService} to return a service with given UUID.
+   *
+   * @return a service with given UUID that have been discovered through {@link
+   *     ShadowBluetoothGatt#discoverServices}.
+   */
+  @Implementation(minSdk = O)
+  @Nullable
+  protected BluetoothGattService getService(UUID uuid) {
+    // TODO: Remove this method when real BluetoothGatt#getService() works.
+    for (BluetoothGattService service : this.services) {
+      if (service.getUuid().equals(uuid)) {
+        return service;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Overrides {@link BluetoothGatt#setCharacteristicNotification} so it returns true (false) if
+   * allowCharacteristicNotification (disallowCharacteristicNotification) is called.
+   */
+  @Implementation(minSdk = O)
+  protected boolean setCharacteristicNotification(
+      BluetoothGattCharacteristic characteristic, boolean enable) {
+    return characteristicNotificationEnableSet.contains(characteristic);
+  }
+
+  @Implementation(minSdk = O)
+  protected boolean writeDescriptor(BluetoothGattDescriptor descriptor) {
+    if (this.getGattCallback() == null) {
+      throw new IllegalStateException(NULL_CALLBACK_MSG);
+    }
+    if (descriptor.getCharacteristic() == null
+        || descriptor.getCharacteristic().getService() == null) {
+      return false;
+    }
+    writtenBytes = descriptor.getValue();
+    bluetoothGattCallback.onDescriptorWrite(
+        realBluetoothGatt, descriptor, BluetoothGatt.GATT_SUCCESS);
+    return true;
+  }
+
+  @Implementation(minSdk = O)
+  protected boolean writeCharacteristic(BluetoothGattCharacteristic characteristic) {
+    return writeIncomingCharacteristic(characteristic);
+  }
+
+  @Implementation(minSdk = Build.VERSION_CODES.TIRAMISU)
+  protected int writeCharacteristic(
+      BluetoothGattCharacteristic characteristic, byte[] value, int writeType) {
+    characteristic.setValue(value);
+    boolean writeSuccessCode = writeIncomingCharacteristic(characteristic);
+    if (writeSuccessCode) {
+      return BluetoothGatt.GATT_SUCCESS;
+    }
+    return BluetoothGatt.GATT_FAILURE;
   }
 
   /**
@@ -258,6 +334,16 @@ public class ShadowBluetoothGatt {
     return true;
   }
 
+  /** Allows the incoming characteristic to be set to enable notification. */
+  public void allowCharacteristicNotification(BluetoothGattCharacteristic characteristic) {
+    characteristicNotificationEnableSet.add(characteristic);
+  }
+
+  /** Disallows the incoming characteristic to be set to enable notification. */
+  public void disallowCharacteristicNotification(BluetoothGattCharacteristic characteristic) {
+    characteristicNotificationEnableSet.remove(characteristic);
+  }
+
   public void addDiscoverableService(BluetoothGattService service) {
     this.discoverableServices.add(service);
   }
@@ -292,6 +378,48 @@ public class ShadowBluetoothGatt {
 
   public byte[] getLatestReadBytes() {
     return this.readBytes;
+  }
+
+  public BluetoothConnectionManager getBluetoothConnectionManager() {
+    return BluetoothConnectionManager.getInstance();
+  }
+
+  /**
+   * Simulate a successful Gatt Client Conection with {@link BluetoothConnectionManager}. Performs a
+   * {@link BluetoothGattCallback#onConnectionStateChange} if available.
+   *
+   * @param remoteAddress address of Gatt client
+   */
+  public void notifyConnection(String remoteAddress) {
+    BluetoothConnectionManager.getInstance().registerGattClientConnection(remoteAddress);
+    this.isConnected = true;
+    if (this.isCallbackAppropriate()) {
+      this.getGattCallback()
+          .onConnectionStateChange(
+              this.realBluetoothGatt, BluetoothGatt.GATT_SUCCESS, BluetoothGatt.STATE_CONNECTED);
+    }
+  }
+
+  /**
+   * Simulate a successful Gatt Client Disconnection with {@link BluetoothConnectionManager}.
+   * Performs a {@link BluetoothGattCallback#onConnectionStateChange} if available.
+   *
+   * @param remoteAddress address of Gatt client
+   */
+  public void notifyDisconnection(String remoteAddress) {
+    BluetoothConnectionManager.getInstance().unregisterGattClientConnection(remoteAddress);
+    if (this.isCallbackAppropriate()) {
+      this.getGattCallback()
+          .onConnectionStateChange(
+              this.realBluetoothGatt,
+              BluetoothGatt.GATT_SUCCESS,
+              BluetoothProfile.STATE_DISCONNECTED);
+    }
+    this.isConnected = false;
+  }
+
+  private boolean isCallbackAppropriate() {
+    return this.getGattCallback() != null && this.isConnected;
   }
 
   @ForType(BluetoothGatt.class)
