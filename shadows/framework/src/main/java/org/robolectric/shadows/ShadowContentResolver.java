@@ -6,8 +6,6 @@ import static android.content.ContentResolver.QUERY_ARG_SQL_SORT_ORDER;
 import static android.content.ContentResolver.SCHEME_ANDROID_RESOURCE;
 import static android.content.ContentResolver.SCHEME_CONTENT;
 import static android.content.ContentResolver.SCHEME_FILE;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.KITKAT;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.Q;
 import static org.robolectric.util.reflector.Reflector.reflector;
@@ -83,7 +81,6 @@ public class ShadowContentResolver {
   private static final Map<Uri, Supplier<OutputStream>> outputStreamMap = new HashMap<>();
   private static final Map<String, List<ContentProviderOperation>> contentProviderOperations =
       new HashMap<>();
-  private static ContentProviderResult[] contentProviderResults;
   private static final List<UriPermission> uriPermissions = new ArrayList<>();
 
   private static final CopyOnWriteArrayList<ContentObserverEntry> contentObservers =
@@ -107,7 +104,6 @@ public class ShadowContentResolver {
     inputStreamMap.clear();
     outputStreamMap.clear();
     contentProviderOperations.clear();
-    contentProviderResults = null;
     uriPermissions.clear();
     contentObservers.clear();
     syncableAccounts.clear();
@@ -183,7 +179,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final InputStream openInputStream(final Uri uri) throws FileNotFoundException {
+  protected InputStream openInputStream(final Uri uri) throws FileNotFoundException {
     Supplier<InputStream> supplier = inputStreamMap.get(uri);
     if (supplier != null) {
       InputStream inputStream = supplier.get();
@@ -201,19 +197,9 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final OutputStream openOutputStream(final Uri uri) throws FileNotFoundException {
-    Supplier<OutputStream> supplier = outputStreamMap.get(uri);
-    if (supplier != null) {
-      OutputStream outputStream = supplier.get();
-      if (outputStream != null) {
-        return outputStream;
-      }
-    }
+  protected OutputStream openOutputStream(final Uri uri) throws FileNotFoundException {
     try {
-      return reflector(
-              org.robolectric.shadows.ShadowContentResolver.ContentResolverReflector.class,
-              realContentResolver)
-          .openOutputStream(uri);
+      return openOutputStream(uri, "w");
     } catch (SecurityException | FileNotFoundException e) {
       // This is legacy behavior is only supported because existing users require it.
       return new OutputStream() {
@@ -228,6 +214,19 @@ public class ShadowContentResolver {
     }
   }
 
+  @Implementation
+  protected OutputStream openOutputStream(Uri uri, String mode) throws FileNotFoundException {
+    Supplier<OutputStream> supplier = outputStreamMap.get(uri);
+    if (supplier != null) {
+      OutputStream outputStream = supplier.get();
+      if (outputStream != null) {
+        return outputStream;
+      }
+    }
+    return reflector(ContentResolverReflector.class, realContentResolver)
+        .openOutputStream(uri, mode);
+  }
+
   /**
    * If a {@link ContentProvider} is registered for the given {@link Uri}, its {@link
    * ContentProvider#insert(Uri, ContentValues)} method will be invoked.
@@ -240,7 +239,7 @@ public class ShadowContentResolver {
    * returned.
    */
   @Implementation
-  protected final Uri insert(Uri url, ContentValues values) {
+  protected Uri insert(Uri url, ContentValues values) {
     ContentProvider provider = getProvider(url, getContext());
     ContentValues valuesCopy = (values == null) ? null : new ContentValues(values);
     InsertStatement insertStatement = new InsertStatement(url, provider, valuesCopy);
@@ -305,7 +304,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final Cursor query(
+  protected Cursor query(
       Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
     ContentProvider provider = getProvider(uri, getContext());
     if (provider != null) {
@@ -365,7 +364,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final ContentProviderClient acquireContentProviderClient(String name) {
+  protected ContentProviderClient acquireContentProviderClient(String name) {
     ContentProvider provider = getProvider(name, getContext());
     if (provider == null) {
       return null;
@@ -374,7 +373,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final ContentProviderClient acquireContentProviderClient(Uri uri) {
+  protected ContentProviderClient acquireContentProviderClient(Uri uri) {
     ContentProvider provider = getProvider(uri, getContext());
     if (provider == null) {
       return null;
@@ -383,7 +382,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final ContentProviderClient acquireUnstableContentProviderClient(String name) {
+  protected ContentProviderClient acquireUnstableContentProviderClient(String name) {
     ContentProvider provider = getProvider(name, getContext());
     if (provider == null) {
       return null;
@@ -392,7 +391,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final ContentProviderClient acquireUnstableContentProviderClient(Uri uri) {
+  protected ContentProviderClient acquireUnstableContentProviderClient(Uri uri) {
     ContentProvider provider = getProvider(uri, getContext());
     if (provider == null) {
       return null;
@@ -413,17 +412,17 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected final IContentProvider acquireProvider(String name) {
+  protected IContentProvider acquireProvider(String name) {
     return acquireUnstableProvider(name);
   }
 
   @Implementation
-  protected final IContentProvider acquireProvider(Uri uri) {
+  protected IContentProvider acquireProvider(Uri uri) {
     return acquireUnstableProvider(uri);
   }
 
   @Implementation
-  protected final IContentProvider acquireUnstableProvider(String name) {
+  protected IContentProvider acquireUnstableProvider(String name) {
     ContentProvider cp = getProvider(name, getContext());
     if (cp != null) {
       return cp.getIContentProvider();
@@ -451,7 +450,7 @@ public class ShadowContentResolver {
    * will be returned.
    */
   @Implementation
-  protected final int delete(Uri url, String where, String[] selectionArgs) {
+  protected int delete(Uri url, String where, String[] selectionArgs) {
     ContentProvider provider = getProvider(url, getContext());
 
     DeleteStatement deleteStatement = new DeleteStatement(url, provider, where, selectionArgs);
@@ -476,7 +475,7 @@ public class ShadowContentResolver {
    * of rows in {@code values} will be returned.
    */
   @Implementation
-  protected final int bulkInsert(Uri url, ContentValues[] values) {
+  protected int bulkInsert(Uri url, ContentValues[] values) {
     ContentProvider provider = getProvider(url, getContext());
 
     InsertStatement insertStatement = new InsertStatement(url, provider, values);
@@ -510,7 +509,7 @@ public class ShadowContentResolver {
   }
 
   @Implementation
-  protected ContentProviderResult[] applyBatch(
+  protected @NonNull ContentProviderResult[] applyBatch(
       String authority, ArrayList<ContentProviderOperation> operations)
       throws OperationApplicationException {
     ContentProvider provider = getProvider(authority, getContext());
@@ -518,7 +517,7 @@ public class ShadowContentResolver {
       return provider.applyBatch(operations);
     } else {
       contentProviderOperations.put(authority, operations);
-      return contentProviderResults;
+      return new ContentProviderResult[0];
     }
   }
 
@@ -647,7 +646,7 @@ public class ShadowContentResolver {
     return masterSyncAutomatically;
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected void takePersistableUriPermission(@NonNull Uri uri, int modeFlags) {
     Objects.requireNonNull(uri, "uri may not be null");
     modeFlags &= (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -675,7 +674,7 @@ public class ShadowContentResolver {
     addUriPermission(uri, modeFlags);
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected void releasePersistableUriPermission(@NonNull Uri uri, int modeFlags) {
     Objects.requireNonNull(uri, "uri may not be null");
     modeFlags &= (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -709,7 +708,7 @@ public class ShadowContentResolver {
     }
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   @NonNull
   protected List<UriPermission> getPersistedUriPermissions() {
     return uriPermissions;
@@ -901,11 +900,6 @@ public class ShadowContentResolver {
     return operations;
   }
 
-  @Deprecated
-  public void setContentProviderResult(ContentProviderResult[] contentProviderResults) {
-    ShadowContentResolver.contentProviderResults = contentProviderResults;
-  }
-
   private final Map<Uri, RuntimeException> registerContentProviderExceptions = new HashMap<>();
 
   /** Makes {@link #registerContentObserver} throw the specified exception for the specified URI. */
@@ -933,7 +927,7 @@ public class ShadowContentResolver {
     contentObservers.add(new ContentObserverEntry(uri, notifyForDescendents, observer));
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected void registerContentObserver(
       Uri uri, boolean notifyForDescendents, ContentObserver observer, int userHandle) {
     registerContentObserver(uri, notifyForDescendents, observer);
@@ -1168,6 +1162,6 @@ public class ShadowContentResolver {
     InputStream openInputStream(Uri uri) throws FileNotFoundException;
 
     @Direct
-    OutputStream openOutputStream(Uri uri) throws FileNotFoundException;
+    OutputStream openOutputStream(Uri uri, String mode) throws FileNotFoundException;
   }
 }

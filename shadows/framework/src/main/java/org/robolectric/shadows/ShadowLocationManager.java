@@ -12,6 +12,8 @@ import static android.provider.Settings.Secure.LOCATION_MODE_SENSORS_ONLY;
 import static android.provider.Settings.Secure.LOCATION_PROVIDERS_ALLOWED;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
+import android.annotation.Nullable;
+import android.annotation.RequiresApi;
 import android.app.PendingIntent;
 import android.app.PendingIntent.CanceledException;
 import android.content.Context;
@@ -38,9 +40,8 @@ import android.os.UserHandle;
 import android.os.WorkSource;
 import android.provider.Settings.Secure;
 import android.text.TextUtils;
-import androidx.annotation.GuardedBy;
-import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
+import android.util.Log;
+import com.android.internal.annotations.GuardedBy;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import java.lang.reflect.Constructor;
@@ -71,6 +72,8 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
 @SuppressWarnings("deprecation")
 @Implements(value = LocationManager.class, looseSignatures = true)
 public class ShadowLocationManager {
+
+  private static final String TAG = "ShadowLocationManager";
 
   private static final long GET_CURRENT_LOCATION_TIMEOUT_MS = 30 * 1000;
   private static final long MAX_CURRENT_LOCATION_AGE_MS = 10 * 1000;
@@ -310,6 +313,8 @@ public class ShadowLocationManager {
 
   private int gnssYearOfHardware;
 
+  private int gnssBatchSize;
+
   public ShadowLocationManager() {
     // create default providers
     providers.add(
@@ -365,11 +370,6 @@ public class ShadowLocationManager {
   @Implementation
   @Nullable
   protected LocationProvider getProvider(String name) {
-    if (RuntimeEnvironment.getApiLevel() < VERSION_CODES.KITKAT) {
-      // jelly bean has no way to properly construct a LocationProvider, we give up
-      return null;
-    }
-
     ProviderEntry providerEntry = getProviderEntry(name);
     if (providerEntry == null) {
       return null;
@@ -385,16 +385,16 @@ public class ShadowLocationManager {
         if (locationProviderConstructor == null) {
           if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.S) {
             locationProviderConstructor =
-                LocationProvider.class.getConstructor(
+                LocationProvider.class.getDeclaredConstructor(
                     String.class, android.location.provider.ProviderProperties.class);
           } else {
             locationProviderConstructor =
-                LocationProvider.class.getConstructor(
+                LocationProvider.class.getDeclaredConstructor(
                     String.class,
                     Class.forName("com.android.internal.location.ProviderProperties"));
           }
-          locationProviderConstructor.setAccessible(true);
         }
+        locationProviderConstructor.setAccessible(true);
 
         if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.S) {
           return locationProviderConstructor.newInstance(name, properties.getProviderProperties());
@@ -808,7 +808,7 @@ public class ShadowLocationManager {
         request.getProvider(), new RoboLocationRequest(request), executor, listener);
   }
 
-  @Implementation(minSdk = VERSION_CODES.KITKAT)
+  @Implementation
   protected void requestLocationUpdates(
       @Nullable LocationRequest request, LocationListener listener, Looper looper) {
     if (request == null) {
@@ -828,7 +828,7 @@ public class ShadowLocationManager {
         listener);
   }
 
-  @Implementation(minSdk = VERSION_CODES.KITKAT)
+  @Implementation
   protected void requestLocationUpdates(
       @Nullable LocationRequest request, PendingIntent pendingIntent) {
     if (request == null) {
@@ -882,15 +882,34 @@ public class ShadowLocationManager {
     }
   }
 
+  @Implementation(minSdk = VERSION_CODES.S)
+  protected void requestFlush(String provider, LocationListener listener, int requestCode) {
+    ProviderEntry entry = getProviderEntry(provider);
+    if (entry == null) {
+      throw new IllegalArgumentException("unknown provider \"" + provider + "\"");
+    }
+
+    entry.requestFlush(listener, requestCode);
+  }
+
+  @Implementation(minSdk = VERSION_CODES.S)
+  protected void requestFlush(String provider, PendingIntent pendingIntent, int requestCode) {
+    ProviderEntry entry = getProviderEntry(provider);
+    if (entry == null) {
+      throw new IllegalArgumentException("unknown provider \"" + provider + "\"");
+    }
+
+    entry.requestFlush(pendingIntent, requestCode);
+  }
+
   /**
    * Returns the list of {@link LocationRequest} currently registered under the given provider.
    * Clients compiled against the public Android SDK should only use this method on S+, clients
-   * compiled against the system Android SDK may only use this method on Kitkat+.
+   * compiled against the system Android SDK can use this method on any supported SDK.
    *
    * <p>Prior to Android S {@link LocationRequest} equality is not well defined, so prefer using
    * {@link #getLegacyLocationRequests(String)} instead if equality is required for testing.
    */
-  @RequiresApi(VERSION_CODES.KITKAT)
   public List<LocationRequest> getLocationRequests(String provider) {
     ProviderEntry providerEntry = getProviderEntry(provider);
     if (providerEntry == null) {
@@ -922,6 +941,47 @@ public class ShadowLocationManager {
   @Implementation(minSdk = VERSION_CODES.P)
   protected boolean injectLocation(Location location) {
     return false;
+  }
+
+  @Implementation(minSdk = VERSION_CODES.O)
+  protected int getGnssBatchSize() {
+    return gnssBatchSize;
+  }
+
+  /**
+   * Sets the GNSS hardware batch size. Values greater than 0 enables hardware GNSS batching APIs.
+   */
+  public void setGnssBatchSize(int gnssBatchSize) {
+    this.gnssBatchSize = gnssBatchSize;
+  }
+
+  @Implementation(minSdk = VERSION_CODES.O)
+  protected boolean registerGnssBatchedLocationCallback(
+      Object periodNanos, Object wakeOnFifoFull, Object callback, Object handler) {
+    getOrCreateProviderEntry(GPS_PROVIDER)
+        .setLegacyBatchedListener(
+            callback,
+            new HandlerExecutor((Handler) handler),
+            gnssBatchSize,
+            (Boolean) wakeOnFifoFull);
+    return true;
+  }
+
+  @Implementation(minSdk = VERSION_CODES.O)
+  protected void flushGnssBatch() {
+    ProviderEntry e = getProviderEntry(GPS_PROVIDER);
+    if (e != null) {
+      e.flushLegacyBatch();
+    }
+  }
+
+  @Implementation(minSdk = VERSION_CODES.O)
+  protected boolean unregisterGnssBatchedLocationCallback(Object callback) {
+    ProviderEntry e = getProviderEntry(GPS_PROVIDER);
+    if (e != null) {
+      e.clearLegacyBatchedListener();
+    }
+    return true;
   }
 
   @Implementation(minSdk = VERSION_CODES.P)
@@ -1119,11 +1179,23 @@ public class ShadowLocationManager {
   @Implementation(minSdk = VERSION_CODES.N)
   protected boolean registerGnssMeasurementsCallback(
       GnssMeasurementsEvent.Callback listener, Handler handler) {
-    if (handler == null) {
-      handler = new Handler();
-    }
+    if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.R) {
+      if (handler == null) {
+        handler = new Handler();
+      }
 
-    return registerGnssMeasurementsCallback(new HandlerExecutor(handler), listener);
+      return registerGnssMeasurementsCallback(new HandlerExecutor(handler), listener);
+    } else {
+      return registerGnssMeasurementsCallback(Runnable::run, listener);
+    }
+  }
+
+  @Implementation(minSdk = VERSION_CODES.R)
+  @RequiresApi(api = VERSION_CODES.R)
+  protected boolean registerGnssMeasurementsCallback(
+      Object request, Object executor, Object callback) {
+    return registerGnssMeasurementsCallback(
+        (Executor) executor, (GnssMeasurementsEvent.Callback) callback);
   }
 
   @Implementation(minSdk = VERSION_CODES.R)
@@ -1238,15 +1310,15 @@ public class ShadowLocationManager {
    *
    * <p>The location will also be delivered to the passive provider.
    */
-  public void simulateLocation(String provider, Location location) {
+  public void simulateLocation(String provider, Location... locations) {
     ProviderEntry providerEntry = getOrCreateProviderEntry(provider);
     if (!PASSIVE_PROVIDER.equals(providerEntry.getName())) {
-      providerEntry.simulateLocation(location);
+      providerEntry.simulateLocation(locations);
     }
 
     ProviderEntry passiveProviderEntry = getProviderEntry(PASSIVE_PROVIDER);
     if (passiveProviderEntry != null) {
-      passiveProviderEntry.simulateLocation(location);
+      passiveProviderEntry.simulateLocation(locations);
     }
   }
 
@@ -1408,6 +1480,10 @@ public class ShadowLocationManager {
     @GuardedBy("this")
     private final CopyOnWriteArrayList<LocationTransport<?>> locationTransports =
         new CopyOnWriteArrayList<>();
+
+    @GuardedBy("this")
+    @Nullable
+    private LegacyBatchedTransport legacyBatchedTransport;
 
     @GuardedBy("this")
     @Nullable
@@ -1587,15 +1663,21 @@ public class ShadowLocationManager {
       lastLocation = location;
     }
 
-    public void simulateLocation(Location location) {
+    public void simulateLocation(Location... locations) {
       List<LocationTransport<?>> transports;
+      LegacyBatchedTransport batchedTransport;
       synchronized (this) {
-        lastLocation = new Location(location);
+        lastLocation = new Location(locations[locations.length - 1]);
         transports = locationTransports;
+        batchedTransport = legacyBatchedTransport;
+      }
+
+      if (batchedTransport != null) {
+        batchedTransport.invokeOnLocations(locations);
       }
 
       for (LocationTransport<?> transport : transports) {
-        if (!transport.invokeOnLocation(location)) {
+        if (!transport.invokeOnLocations(locations)) {
           synchronized (this) {
             Iterables.removeIf(locationTransports, current -> current == transport);
           }
@@ -1623,6 +1705,31 @@ public class ShadowLocationManager {
       addListenerInternal(new LocationPendingIntentTransport(getContext(), pendingIntent, request));
     }
 
+    public void setLegacyBatchedListener(
+        Object callback, Executor executor, int batchSize, boolean flushOnFifoFull) {
+      synchronized (this) {
+        legacyBatchedTransport =
+            new LegacyBatchedTransport(callback, executor, batchSize, flushOnFifoFull);
+      }
+    }
+
+    public void flushLegacyBatch() {
+      LegacyBatchedTransport batchedTransport;
+      synchronized (this) {
+        batchedTransport = legacyBatchedTransport;
+      }
+
+      if (batchedTransport != null) {
+        batchedTransport.invokeFlush();
+      }
+    }
+
+    public void clearLegacyBatchedListener() {
+      synchronized (this) {
+        legacyBatchedTransport = null;
+      }
+    }
+
     private void addListenerInternal(LocationTransport<?> transport) {
       boolean invokeOnProviderEnabled;
       synchronized (this) {
@@ -1644,6 +1751,23 @@ public class ShadowLocationManager {
       Iterables.removeIf(locationTransports, transport -> transport.getKey() == key);
     }
 
+    public void requestFlush(Object key, int requestCode) {
+      LocationTransport<?> transport;
+      synchronized (this) {
+        transport = Iterables.tryFind(locationTransports, t -> t.getKey() == key).orNull();
+      }
+
+      if (transport == null) {
+        throw new IllegalArgumentException("unregistered listener cannot be flushed");
+      }
+
+      if (!transport.invokeOnFlush(requestCode)) {
+        synchronized (this) {
+          Iterables.removeIf(locationTransports, current -> current == transport);
+        }
+      }
+    }
+
     @Override
     public boolean equals(Object o) {
       if (o instanceof ProviderEntry) {
@@ -1661,8 +1785,8 @@ public class ShadowLocationManager {
   }
 
   /**
-   * LocationRequest doesn't exist prior to Kitkat, and is not public prior to S, so a new class is
-   * required to represent it prior to those platforms.
+   * LocationRequest is not public prior to S, so a new class is required to represent it prior to
+   * those platforms.
    */
   public static final class RoboLocationRequest {
     @Nullable private final Object locationRequest;
@@ -1672,7 +1796,6 @@ public class ShadowLocationManager {
     private final float minUpdateDistanceMeters;
     private final boolean singleShot;
 
-    @RequiresApi(VERSION_CODES.KITKAT)
     public RoboLocationRequest(LocationRequest locationRequest) {
       this.locationRequest = Objects.requireNonNull(locationRequest);
       intervalMillis = 0;
@@ -1682,20 +1805,15 @@ public class ShadowLocationManager {
 
     public RoboLocationRequest(
         String provider, long intervalMillis, float minUpdateDistanceMeters, boolean singleShot) {
-      if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.KITKAT) {
-        locationRequest =
-            LocationRequest.createFromDeprecatedProvider(
-                provider, intervalMillis, minUpdateDistanceMeters, singleShot);
-      } else {
-        locationRequest = null;
-      }
+      locationRequest =
+          LocationRequest.createFromDeprecatedProvider(
+              provider, intervalMillis, minUpdateDistanceMeters, singleShot);
 
       this.intervalMillis = intervalMillis;
       this.minUpdateDistanceMeters = minUpdateDistanceMeters;
       this.singleShot = singleShot;
     }
 
-    @RequiresApi(VERSION_CODES.KITKAT)
     public LocationRequest getLocationRequest() {
       return (LocationRequest) Objects.requireNonNull(locationRequest);
     }
@@ -1846,28 +1964,45 @@ public class ShadowLocationManager {
     }
 
     // return false if this listener should be removed by this invocation
-    public boolean invokeOnLocation(Location location) {
-      if (lastDeliveredLocation != null) {
-        if (location.getTime() - lastDeliveredLocation.getTime()
-            < request.getMinUpdateIntervalMillis()) {
-          return true;
+    public boolean invokeOnLocations(Location... locations) {
+      ArrayList<Location> deliverableLocations = new ArrayList<>(locations.length);
+      for (Location location : locations) {
+        if (lastDeliveredLocation != null) {
+          if (NANOSECONDS.toMillis(
+                  location.getElapsedRealtimeNanos()
+                      - lastDeliveredLocation.getElapsedRealtimeNanos())
+              < request.getMinUpdateIntervalMillis()) {
+            Log.w(TAG, "location rejected for simulated delivery - too fast");
+            continue;
+          }
+          if (distanceBetween(location, lastDeliveredLocation)
+              < request.getMinUpdateDistanceMeters()) {
+            Log.w(TAG, "location rejected for simulated delivery - too close");
+            continue;
+          }
         }
-        if (distanceBetween(location, lastDeliveredLocation)
-            < request.getMinUpdateDistanceMeters()) {
-          return true;
-        }
+
+        deliverableLocations.add(new Location(location));
+        lastDeliveredLocation = new Location(location);
       }
 
-      lastDeliveredLocation = new Location(location);
+      if (deliverableLocations.isEmpty()) {
+        return true;
+      }
 
       boolean needsRemoval = false;
 
-      if (++numDeliveries >= request.getMaxUpdates()) {
+      numDeliveries += deliverableLocations.size();
+      if (numDeliveries >= request.getMaxUpdates()) {
         needsRemoval = true;
       }
 
       try {
-        onLocation(location);
+        if (deliverableLocations.size() == 1) {
+          onLocation(deliverableLocations.get(0));
+        } else {
+          onLocations(deliverableLocations);
+        }
       } catch (CanceledException e) {
         needsRemoval = true;
       }
@@ -1885,9 +2020,23 @@ public class ShadowLocationManager {
       }
     }
 
+    // return false if this listener should be removed by this invocation
+    public boolean invokeOnFlush(int requestCode) {
+      try {
+        onFlushComplete(requestCode);
+        return true;
+      } catch (CanceledException e) {
+        return false;
+      }
+    }
+
     abstract void onLocation(Location location) throws CanceledException;
 
+    abstract void onLocations(List<Location> locations) throws CanceledException;
+
     abstract void onProviderEnabled(String provider, boolean enabled) throws CanceledException;
+
+    abstract void onFlushComplete(int requestCode) throws CanceledException;
   }
 
   private static final class LocationListenerTransport extends LocationTransport<LocationListener> {
@@ -1901,12 +2050,26 @@ public class ShadowLocationManager {
     }
 
     @Override
-    public void onLocation(Location location) {
-      executor.execute(() -> getKey().onLocationChanged(new Location(location)));
+    void onLocation(Location location) {
+      executor.execute(() -> getKey().onLocationChanged(location));
     }
 
     @Override
-    public void onProviderEnabled(String provider, boolean enabled) {
+    void onLocations(List<Location> locations) {
+      executor.execute(
+          () -> {
+            if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.S) {
+              getKey().onLocationChanged(locations);
+            } else {
+              for (Location location : locations) {
+                getKey().onLocationChanged(location);
+              }
+            }
+          });
+    }
+
+    @Override
+    void onProviderEnabled(String provider, boolean enabled) {
       executor.execute(
           () -> {
             if (enabled) {
@@ -1915,6 +2078,11 @@ public class ShadowLocationManager {
               getKey().onProviderDisabled(provider);
             }
           });
+    }
+
+    @Override
+    void onFlushComplete(int requestCode) {
+      executor.execute(() -> getKey().onFlushComplete(requestCode));
     }
   }
 
@@ -1930,17 +2098,83 @@ public class ShadowLocationManager {
     }
 
     @Override
-    public void onLocation(Location location) throws CanceledException {
+    void onLocation(Location location) throws CanceledException {
       Intent intent = new Intent();
       intent.putExtra(LocationManager.KEY_LOCATION_CHANGED, new Location(location));
       getKey().send(context, 0, intent);
     }
 
     @Override
-    public void onProviderEnabled(String provider, boolean enabled) throws CanceledException {
+    void onLocations(List<Location> locations) throws CanceledException {
+      if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.S) {
+        Intent intent = new Intent();
+        intent.putExtra(LocationManager.KEY_LOCATION_CHANGED, locations.get(locations.size() - 1));
+        intent.putExtra(LocationManager.KEY_LOCATIONS, locations.toArray(new Location[0]));
+        getKey().send(context, 0, intent);
+      } else {
+        for (Location location : locations) {
+          onLocation(location);
+        }
+      }
+    }
+
+    @Override
+    void onProviderEnabled(String provider, boolean enabled) throws CanceledException {
       Intent intent = new Intent();
       intent.putExtra(LocationManager.KEY_PROVIDER_ENABLED, enabled);
       getKey().send(context, 0, intent);
+    }
+
+    @Override
+    void onFlushComplete(int requestCode) throws CanceledException {
+      Intent intent = new Intent();
+      intent.putExtra(LocationManager.KEY_FLUSH_COMPLETE, requestCode);
+      getKey().send(context, 0, intent);
+    }
+  }
+
+  private static final class LegacyBatchedTransport {
+
+    private final android.location.BatchedLocationCallback callback;
+    private final Executor executor;
+    private final int batchSize;
+    private final boolean flushOnFifoFull;
+
+    private ArrayList<Location> batch = new ArrayList<>();
+
+    LegacyBatchedTransport(
+        Object callback, Executor executor, int batchSize, boolean flushOnFifoFull) {
+      this.callback = (android.location.BatchedLocationCallback) callback;
+      this.executor = executor;
+      this.batchSize = batchSize;
+      this.flushOnFifoFull = flushOnFifoFull;
+    }
+
+    public void invokeFlush() {
+      ArrayList<Location> delivery = batch;
+      batch = new ArrayList<>();
+      executor.execute(
+          () -> {
+            callback.onLocationBatch(delivery);
+            if (!delivery.isEmpty()) {
+              callback.onLocationBatch(new ArrayList<>());
+            }
+          });
+    }
+
+    public void invokeOnLocations(Location... locations) {
+      for (Location location : locations) {
+        batch.add(new Location(location));
+        if (batch.size() >= batchSize) {
+          if (!flushOnFifoFull) {
+            batch.remove(0);
+          } else {
+            ArrayList<Location> delivery = batch;
+            batch = new ArrayList<>();
+            executor.execute(() -> callback.onLocationBatch(delivery));
+          }
+        }
+      }
     }
   }
 

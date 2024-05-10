@@ -5,6 +5,7 @@ import static org.robolectric.res.android.Errors.NO_INIT;
 import static org.robolectric.res.android.ResourceTypes.RES_STRING_POOL_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_LIBRARY_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_PACKAGE_TYPE;
+import static org.robolectric.res.android.ResourceTypes.RES_TABLE_STAGED_ALIAS_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_TYPE_SPEC_TYPE;
 import static org.robolectric.res.android.ResourceTypes.RES_TABLE_TYPE_TYPE;
@@ -19,6 +20,7 @@ import static org.robolectric.res.android.Util.logWarning;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -27,6 +29,8 @@ import org.robolectric.res.android.Chunk.Iterator;
 import org.robolectric.res.android.Idmap.LoadedIdmap;
 import org.robolectric.res.android.ResourceTypes.IdmapEntry_header;
 import org.robolectric.res.android.ResourceTypes.ResStringPool_header;
+import org.robolectric.res.android.ResourceTypes.ResTableStagedAliasEntry;
+import org.robolectric.res.android.ResourceTypes.ResTableStagedAliasHeader;
 import org.robolectric.res.android.ResourceTypes.ResTable_entry;
 import org.robolectric.res.android.ResourceTypes.ResTable_header;
 import org.robolectric.res.android.ResourceTypes.ResTable_lib_entry;
@@ -43,22 +47,25 @@ import org.robolectric.res.android.ResourceTypes.Res_value;
 // and https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r12/libs/androidfw/LoadedArsc.cpp
 public class LoadedArsc {
 
-  //#ifndef LOADEDARSC_H_
-//#define LOADEDARSC_H_
-//
-//#include <memory>
-//#include <set>
-//#include <vector>
-//
-//#include "android-base/macros.h"
-//
-//#include "androidfw/ByteBucketArray.h"
-//#include "androidfw/Chunk.h"
-//#include "androidfw/ResourceTypes.h"
-//#include "androidfw/Util.h"
-//
-//namespace android {
-//
+  // #ifndef LOADEDARSC_H_
+  // #define LOADEDARSC_H_
+  //
+  // #include <memory>
+  // #include <set>
+  // #include <vector>
+  //
+  // #include "android-base/macros.h"
+  //
+  // #include "androidfw/ByteBucketArray.h"
+  // #include "androidfw/Chunk.h"
+  // #include "androidfw/ResourceTypes.h"
+  // #include "androidfw/Util.h"
+  //
+  // namespace android {
+  //
+
+  private static final int kFrameworkPackageId = 0x01;
+
   static class DynamicPackageEntry {
 
     // public:
@@ -237,9 +244,9 @@ public class LoadedArsc {
     // Make sure that there is enough room for the entry offsets.
     int offsets_offset = dtohs(header.header.headerSize);
     int entries_offset = dtohl(header.entriesStart);
-    int offsets_length = 4 * entry_count;
-
-    if (offsets_offset > entries_offset || entries_offset - offsets_offset < offsets_length) {
+    int bytesPerEntry = isTruthy(header.flags & ResTable_type.FLAG_OFFSET16) ? 2 : 4;
+    int offsetsLength = bytesPerEntry * entry_count;
+    if (offsets_offset > entries_offset || entries_offset - offsets_offset < offsetsLength) {
       logError("RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data.");
       return false;
     }
@@ -284,23 +291,27 @@ public class LoadedArsc {
     //       reinterpret_cast<uint8_t*>(type) + entry_offset);
     ResTable_entry entry = new ResTable_entry(type.myBuf(), type.myOffset() + entry_offset);
 
-    int entry_size = dtohs(entry.size);
-    // if (entry_size < sizeof(*entry)) {
-    if (entry_size < ResTable_entry.SIZEOF) {
-      logError("ResTable_entry size " + entry_size + " at offset " + entry_offset
-          + " is too small.");
+    int entrySize = entry.isCompact() ? ResTable_entry.SIZEOF : dtohs(entry.size);
+    if (entrySize < ResTable_entry.SIZEOF) {
+      logError(
+          "ResTable_entry size " + entrySize + " at offset " + entry_offset + " is too small.");
       return false;
     }
 
-    if (entry_size > chunk_size || entry_offset > chunk_size - entry_size) {
-      logError("ResTable_entry size " + entry_size + " at offset " + entry_offset
-          + " is too large.");
+    if (entrySize > chunk_size || entry_offset > chunk_size - entrySize) {
+      logError(
+          "ResTable_entry size " + entrySize + " at offset " + entry_offset + " is too large.");
       return false;
     }
 
-    if (entry_size < ResTable_map_entry.BASE_SIZEOF) {
+    // No further validations apply if the entry is compact.
+    if (entry.isCompact()) {
+      return true;
+    }
+
+    if (entrySize < ResTable_map_entry.BASE_SIZEOF) {
       // There needs to be room for one Res_value struct.
-      if (entry_offset + entry_size > chunk_size - Res_value.SIZEOF) {
+      if (entry_offset + entrySize > chunk_size - Res_value.SIZEOF) {
         logError("No room for Res_value after ResTable_entry at offset " + entry_offset
             + " for type " + (int) type.id + ".");
         return false;
@@ -308,15 +319,14 @@ public class LoadedArsc {
 
       // Res_value value =
       //       reinterpret_cast<Res_value*>(reinterpret_cast<uint8_t*>(entry) + entry_size);
-      Res_value value =
-          new Res_value(entry.myBuf(), entry.myOffset() + ResTable_entry.SIZEOF);
+      Res_value value = entry.getResValue();
       int value_size = dtohs(value.size);
       if (value_size < Res_value.SIZEOF) {
         logError("Res_value at offset " + entry_offset + " is too small.");
         return false;
       }
 
-      if (value_size > chunk_size || entry_offset + entry_size > chunk_size - value_size) {
+      if (value_size > chunk_size || entry_offset + entrySize > chunk_size - value_size) {
         logError("Res_value size " + value_size + " at offset " + entry_offset
             + " is too large.");
         return false;
@@ -324,14 +334,14 @@ public class LoadedArsc {
     } else {
       ResTable_map_entry map = new ResTable_map_entry(entry.myBuf(), entry.myOffset());
       int map_entry_count = dtohl(map.count);
-      int map_entries_start = entry_offset + entry_size;
-      if (isTruthy(map_entries_start & 0x03)) {
+      int mapEntriesStart = entry_offset + entrySize;
+      if (isTruthy(mapEntriesStart & 0x03)) {
         logError("Map entries at offset " + entry_offset + " start at unaligned offset.");
         return false;
       }
 
       // Each entry is sizeof(ResTable_map) big.
-      if (map_entry_count > ((chunk_size - map_entries_start) / ResTable_map.SIZEOF)) {
+      if (map_entry_count > ((chunk_size - mapEntriesStart) / ResTable_map.SIZEOF)) {
         logError("Too many map entries in ResTable_map_entry at offset " + entry_offset + ".");
         return false;
       }
@@ -363,6 +373,7 @@ public class LoadedArsc {
     // };
     final Map<Integer, TypeSpec> type_specs_ = new HashMap<>();
     final List<DynamicPackageEntry> dynamic_package_map_ = new ArrayList<>();
+    final Map<Integer, Integer> aliasIdMap = new HashMap<>();
 
     ResTable_entry GetEntry(ResTable_type type_chunk,
         short entry_index) {
@@ -513,32 +524,79 @@ public class LoadedArsc {
         return 0;
       }
 
+      // for (const auto& type_entry : type_spec->type_entries) {
       for (ResTable_type iter : type_spec.types) {
+        // const incfs::verified_map_ptr<ResTable_type>& type = type_entry.type;
         ResTable_type type = iter;
+        // const size_t entry_count = dtohl(type->entryCount);
         int entry_count = type.entryCount;
+        // const auto entry_offsets = type.offset(dtohs(type->header.headerSize));
 
+        // for (size_t entry_idx = 0; entry_idx < entry_count; entry_idx++) {
         for (int entry_idx = 0; entry_idx < entry_count; entry_idx++) {
-          // const uint32_t* entry_offsets = reinterpret_cast<const uint32_t*>(
-          //     reinterpret_cast<const uint8_t*>(type.type) + dtohs(type.type.header.headerSize));
-          // ResTable_type entry_offsets = new ResTable_type(type.myBuf(),
-          //     type.myOffset() + type.header.headerSize);
-          // int offset = dtohl(entry_offsets[entry_idx]);
-          int offset = dtohl(type.entryOffset(entry_idx));
+          // uint32_t offset;
+          int offset;
+          // uint16_t res_idx;
+          short res_idx;
+          // if (type->flags & ResTable_type::FLAG_SPARSE) {
+          if (isTruthy(type.flags & ResTable_type.FLAG_SPARSE)) {
+            // auto sparse_entry = entry_offsets.convert<ResTable_sparseTypeEntry>() + entry_idx;
+
+            ResTable_sparseTypeEntry sparse_entry =
+                new ResTable_sparseTypeEntry(
+                    type.myBuf(), type.myOffset() + entry_idx * ResTable_sparseTypeEntry.SIZEOF);
+            // if (!sparse_entry) {
+            //   return base::unexpected(IOError::PAGES_MISSING);
+            // }
+            // TODO: implement above
+            // offset = dtohs(sparse_entry->offset) * 4u;
+            offset = dtohs(sparse_entry.offset) * 4;
+            // res_idx  = dtohs(sparse_entry->idx);
+            res_idx = dtohs(sparse_entry.idx);
+            // } else if (type->flags & ResTable_type::FLAG_OFFSET16) {
+          } else if (isTruthy(type.flags & ResTable_type.FLAG_OFFSET16)) {
+            // auto entry = entry_offsets.convert<uint16_t>() + entry_idx;
+            int entry = type.entryOffset(entry_idx);
+            // if (!entry) {
+            //   return base::unexpected(IOError::PAGES_MISSING);
+            // }
+            // offset = offset_from16(entry.value());
+            offset = entry;
+            // res_idx = entry_idx;
+            res_idx = (short) entry_idx;
+          } else {
+            // auto entry = entry_offsets.convert<uint32_t>() + entry_idx;
+            int entry = type.entryOffset(entry_idx);
+            // if (!entry) {
+            //   return base::unexpected(IOError::PAGES_MISSING);
+            // }
+            // offset = dtohl(entry.value());
+            offset = dtohl(entry);
+            res_idx = (short) entry_idx;
+          }
+
           if (offset != ResTable_type.NO_ENTRY) {
-            // const ResTable_entry* entry =
-            //     reinterpret_cast<const ResTable_entry*>(reinterpret_cast<const uint8_t*>(type.type) +
-            //     dtohl(type.type.entriesStart) + offset);
+            // auto entry = type.offset(dtohl(type->entriesStart) +
+            // offset).convert<ResTable_entry>();
             ResTable_entry entry =
-                new ResTable_entry(type.myBuf(), type.myOffset() +
-                    dtohl(type.entriesStart) + offset);
-            if (dtohl(entry.key.index) == key_idx) {
-              // The package ID will be overridden by the caller (due to runtime assignment of package
+                new ResTable_entry(
+                    type.myBuf(), type.myOffset() + dtohl(type.entriesStart) + offset);
+            // if (!entry) {
+            //   return base::unexpected(IOError::PAGES_MISSING);
+            // }
+            // TODO implement above
+            // if (entry->key() == static_cast<uint32_t>(*key_idx)) {
+            if (dtohl(entry.getKeyIndex()) == key_idx) {
+              // The package ID will be overridden by the caller (due to runtime assignment of
+              // package
               // IDs for shared libraries).
-              return make_resid((byte) 0x00, (byte) (type_idx + type_id_offset_ + 1), (short) entry_idx);
+              // return make_resid(0x00, *type_idx + type_id_offset_ + 1, res_idx);
+              return make_resid((byte) 0x00, (byte) (type_idx + type_id_offset_ + 1), res_idx);
             }
           }
         }
       }
+      // return base::unexpected(std::nullopt);
       return 0;
     }
 
@@ -721,33 +779,96 @@ public class LoadedArsc {
 
             // loaded_package.dynamic_package_map_.reserve(dtohl(lib.count));
 
-            // ResTable_lib_entry entry_begin =
+            // ResTable_lib_entry entryBegin =
             //     reinterpret_cast<ResTable_lib_entry*>(child_chunk.data_ptr());
-            ResTable_lib_entry entry_begin =
+            ResTable_lib_entry entryBegin =
                 child_chunk.asResTable_lib_entry();
-            // ResTable_lib_entry entry_end = entry_begin + dtohl(lib.count);
-            // for (auto entry_iter = entry_begin; entry_iter != entry_end; ++entry_iter) {
-            for (ResTable_lib_entry entry_iter = entry_begin;
-                entry_iter.myOffset() != entry_begin.myOffset() + dtohl(lib.count);
-                entry_iter = new ResTable_lib_entry(entry_iter.myBuf(), entry_iter.myOffset() + ResTable_lib_entry.SIZEOF)) {
+            // ResTable_lib_entry entry_end = entryBegin + dtohl(lib.count);
+            // for (auto entryIter = entryBegin; entryIter != entry_end; ++entryIter) {
+            for (ResTable_lib_entry entryIter = entryBegin;
+                entryIter.myOffset() != entryBegin.myOffset() + dtohl(lib.count);
+                entryIter = new ResTable_lib_entry(
+                    entryIter.myBuf(), entryIter.myOffset() + ResTable_lib_entry.SIZEOF)) {
               String package_name =
-                  Util.ReadUtf16StringFromDevice(entry_iter.packageName,
-                      entry_iter.packageName.length);
+                  Util.ReadUtf16StringFromDevice(entryIter.packageName,
+                      entryIter.packageName.length);
               
-              if (dtohl(entry_iter.packageId) >= 255) {
+              if (dtohl(entryIter.packageId) >= 255) {
                 logError(String.format(
                     "Package ID %02x in RES_TABLE_LIBRARY_TYPE too large for package '%s'.",
-                    dtohl(entry_iter.packageId), package_name));
+                    dtohl(entryIter.packageId), package_name));
                 return emptyBraces();
               }
 
               // loaded_package.dynamic_package_map_.emplace_back(std.move(package_name),
-              //     dtohl(entry_iter.packageId));
+              //     dtohl(entryIter.packageId));
               loaded_package.dynamic_package_map_.add(new DynamicPackageEntry(package_name,
-                  dtohl(entry_iter.packageId)));
+                  dtohl(entryIter.packageId)));
             }
 
           } break;
+
+          case RES_TABLE_STAGED_ALIAS_TYPE:
+            {
+              if (loaded_package.package_id_ != kFrameworkPackageId) {
+                logWarning(
+                    String.format(
+                        "Alias chunk ignored for non-framework package '%s'",
+                        loaded_package.package_name_));
+                break;
+              }
+
+              ResTableStagedAliasHeader libAlias = child_chunk.asResTableStagedAliasHeader();
+              if (libAlias == null) {
+                logError("RES_TABLE_STAGED_ALIAS_TYPE is too small.");
+                return emptyBraces();
+              }
+              if ((child_chunk.data_size() / ResTableStagedAliasEntry.SIZEOF)
+                  < dtohl(libAlias.count)) {
+                logError("RES_TABLE_STAGED_ALIAS_TYPE is too small to hold entries.");
+                return emptyBraces();
+              }
+
+              // const auto entryBegin =
+              // child_chunk.data_ptr().convert<ResTableStagedAliasEntry>();
+              // const auto entry_end = entryBegin + dtohl(libAlias.count);
+              ResTableStagedAliasEntry entryBegin = child_chunk.asResTableStagedAliasEntry();
+              int entryEndOffset =
+                  entryBegin.myOffset()
+                      + dtohl(libAlias.count) * ResTableStagedAliasEntry.SIZEOF;
+              // std::unordered_set<uint32_t> finalizedIds;
+              // finalizedIds.reserve(entry_end - entryBegin);
+              Set<Integer> finalizedIds = new HashSet<>();
+              for (ResTableStagedAliasEntry entryIter = entryBegin;
+                  entryIter.myOffset() != entryEndOffset;
+                  entryIter =
+                      new ResTableStagedAliasEntry(
+                          entryIter.myBuf(),
+                          entryIter.myOffset() + ResTableStagedAliasEntry.SIZEOF)) {
+
+                int finalizedId = dtohl(entryIter.finalizedResId);
+                // if (!finalizedIds.insert(finalizedId).second) {
+                if (!finalizedIds.add(finalizedId)) {
+                  logError(
+                      String.format(
+                          "Repeated finalized resource id '%08x' in staged aliases.",
+                          finalizedId));
+                  return emptyBraces();
+                }
+
+                int stagedId = dtohl(entryIter.stagedResId);
+                // auto [_, success] = loaded_package->aliasIdMap.emplace(stagedId,
+                // finalizedId);
+                Integer previousValue = loaded_package.aliasIdMap.put(stagedId, finalizedId);
+                if (previousValue != null) {
+                  logError(
+                      String.format(
+                          "Repeated staged resource id '%08x' in staged aliases.", stagedId));
+                  return emptyBraces();
+                }
+              }
+            }
+            break;
 
           default:
             logWarning(String.format("Unknown chunk type '%02x'.", chunk.type()));
@@ -850,6 +971,10 @@ public class LoadedArsc {
           f.apply(ptr, (byte) (type_id - 1));
         }
       }
+    }
+
+    Map<Integer, Integer> getAliasResourceIdMap() {
+      return aliasIdMap;
     }
 
     private static LoadedPackage emptyBraces() {

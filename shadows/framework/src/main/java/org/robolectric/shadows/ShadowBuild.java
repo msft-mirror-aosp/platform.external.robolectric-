@@ -23,6 +23,15 @@ public class ShadowBuild {
   private static String serialOverride = Build.UNKNOWN;
 
   /**
+   * Sets the value of the {@link Build#BOARD} field.
+   *
+   * <p>It will be reset for the next test.
+   */
+  public static void setBoard(String board) {
+    ReflectionHelpers.setStaticField(Build.class, "BOARD", board);
+  }
+
+  /**
    * Sets the value of the {@link Build#DEVICE} field.
    *
    * <p>It will be reset for the next test.
@@ -56,6 +65,15 @@ public class ShadowBuild {
    */
   public static void setProduct(String product) {
     ReflectionHelpers.setStaticField(Build.class, "PRODUCT", product);
+  }
+
+  /**
+   * Sets the value of the {@link Build#IS_DEBUGGABLE} field.
+   *
+   * <p>It will be reset for the next test.
+   */
+  public static void setDebuggable(Boolean isDebuggable) {
+    ReflectionHelpers.setStaticField(Build.class, "IS_DEBUGGABLE", isDebuggable);
   }
 
   /**
@@ -167,6 +185,16 @@ public class ShadowBuild {
   }
 
   /**
+   * Sets the value of the {@link Build#SUPPORTED_32_BIT_ABIS} field. Available in Android L+.
+   *
+   * <p>It will be reset for the next test.
+   */
+  @TargetApi(LOLLIPOP)
+  public static void setSupported32BitAbis(String[] supported32BitAbis) {
+    ReflectionHelpers.setStaticField(Build.class, "SUPPORTED_32_BIT_ABIS", supported32BitAbis);
+  }
+
+  /**
    * Sets the value of the {@link Build#SUPPORTED_64_BIT_ABIS} field. Available in Android L+.
    *
    * <p>It will be reset for the next test.
@@ -174,6 +202,16 @@ public class ShadowBuild {
   @TargetApi(LOLLIPOP)
   public static void setSupported64BitAbis(String[] supported64BitAbis) {
     ReflectionHelpers.setStaticField(Build.class, "SUPPORTED_64_BIT_ABIS", supported64BitAbis);
+  }
+
+  /**
+   * Sets the value of the {@link Build#SUPPORTED_ABIS} field. Available in Android L+.
+   *
+   * <p>It will be reset for the next test.
+   */
+  @TargetApi(LOLLIPOP)
+  public static void setSupportedAbis(String[] supportedAbis) {
+    ReflectionHelpers.setStaticField(Build.class, "SUPPORTED_ABIS", supportedAbis);
   }
 
   /**

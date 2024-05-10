@@ -7,6 +7,8 @@ import static org.robolectric.res.android.Util.isTruthy;
 import java.nio.ByteBuffer;
 import org.robolectric.res.android.ResourceTypes.ResChunk_header;
 import org.robolectric.res.android.ResourceTypes.ResStringPool_header;
+import org.robolectric.res.android.ResourceTypes.ResTableStagedAliasEntry;
+import org.robolectric.res.android.ResourceTypes.ResTableStagedAliasHeader;
 import org.robolectric.res.android.ResourceTypes.ResTable_header;
 import org.robolectric.res.android.ResourceTypes.ResTable_lib_entry;
 import org.robolectric.res.android.ResourceTypes.ResTable_lib_header;
@@ -114,6 +116,23 @@ class Chunk {
   public ResTable_lib_entry asResTable_lib_entry() {
     if (header_size() >= ResTable_lib_entry.SIZEOF) {
       return new ResTable_lib_entry(device_chunk_.myBuf(), device_chunk_.myOffset());
+    } else {
+      return null;
+    }
+  }
+
+  public ResTableStagedAliasHeader asResTableStagedAliasHeader() {
+    if (header_size() >= ResTableStagedAliasHeader.SIZEOF) {
+      return new ResTableStagedAliasHeader(device_chunk_.myBuf(), device_chunk_.myOffset());
+    } else {
+      return null;
+    }
+  }
+
+  public ResTableStagedAliasEntry asResTableStagedAliasEntry() {
+    if (data_size() >= ResTableStagedAliasEntry.SIZEOF) {
+      return new ResTableStagedAliasEntry(
+          device_chunk_.myBuf(), device_chunk_.myOffset() + header_size());
     } else {
       return null;
     }

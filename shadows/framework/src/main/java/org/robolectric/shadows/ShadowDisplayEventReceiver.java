@@ -1,9 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.KITKAT_WATCH;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N_MR1;
@@ -12,6 +8,7 @@ import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.os.MessageQueue;
 import android.os.SystemClock;
@@ -29,12 +26,12 @@ import org.robolectric.annotation.RealObject;
 import org.robolectric.annotation.ReflectorObject;
 import org.robolectric.res.android.NativeObjRegistry;
 import org.robolectric.shadow.api.Shadow;
-import org.robolectric.util.ReflectionHelpers;
-import org.robolectric.util.ReflectionHelpers.ClassParameter;
 import org.robolectric.util.reflector.Accessor;
+import org.robolectric.util.reflector.Constructor;
 import org.robolectric.util.reflector.Direct;
 import org.robolectric.util.reflector.ForType;
 import org.robolectric.util.reflector.WithType;
+import org.robolectric.versioning.AndroidVersions.U;
 
 /**
  * Shadow of {@link DisplayEventReceiver}. The {@link Choreographer} is a subclass of {@link
@@ -73,20 +70,13 @@ public class ShadowDisplayEventReceiver {
     return nativeObjRegistry.register(new NativeDisplayEventReceiver(receiver));
   }
 
-  @Implementation(minSdk = KITKAT_WATCH, maxSdk = LOLLIPOP_MR1)
+  @Implementation(maxSdk = LOLLIPOP_MR1)
   protected static long nativeInit(DisplayEventReceiver receiver, MessageQueue msgQueue) {
     return nativeObjRegistry.register(
         new NativeDisplayEventReceiver(new WeakReference<>(receiver)));
   }
 
-  @Implementation(maxSdk = KITKAT)
-  protected static int nativeInit(Object receiver, Object msgQueue) {
-    return (int)
-        nativeObjRegistry.register(
-            new NativeDisplayEventReceiver(new WeakReference<>((DisplayEventReceiver) receiver)));
-  }
-
-  @Implementation(minSdk = R)
+  @Implementation(minSdk = R, maxSdk = TIRAMISU)
   protected static long nativeInit(
       WeakReference<DisplayEventReceiver> receiver,
       MessageQueue msgQueue,
@@ -95,7 +85,18 @@ public class ShadowDisplayEventReceiver {
     return nativeInit(receiver, msgQueue);
   }
 
-  @Implementation(minSdk = KITKAT_WATCH)
+  @Implementation(minSdk = U.SDK_INT)
+  protected static long nativeInit(
+      WeakReference<DisplayEventReceiver> receiver,
+      WeakReference<Object> vsyncEventData,
+      MessageQueue msgQueue,
+      int vsyncSource,
+      int eventRegistration,
+      long layerHandle) {
+    return nativeInit(receiver, msgQueue);
+  }
+
+  @Implementation(maxSdk = TIRAMISU)
   protected static void nativeDispose(long receiverPtr) {
     NativeDisplayEventReceiver receiver = nativeObjRegistry.unregister(receiverPtr);
     if (receiver != null) {
@@ -103,25 +104,13 @@ public class ShadowDisplayEventReceiver {
     }
   }
 
-  @Implementation(maxSdk = KITKAT)
-  protected static void nativeDispose(int receiverPtr) {
-    NativeDisplayEventReceiver receiver = nativeObjRegistry.unregister(receiverPtr);
-    if (receiver != null) {
-      receiver.dispose();
-    }
-  }
-
-  @Implementation(minSdk = KITKAT_WATCH)
+  @Implementation
   protected static void nativeScheduleVsync(long receiverPtr) {
     nativeObjRegistry.getNativeObject(receiverPtr).scheduleVsync();
   }
 
-  @Implementation(maxSdk = KITKAT)
-  protected static void nativeScheduleVsync(int receiverPtr) {
-    nativeObjRegistry.getNativeObject(receiverPtr).scheduleVsync();
-  }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1, maxSdk = R)
+  @Implementation(maxSdk = R)
   protected void dispose(boolean finalized) {
     CloseGuard closeGuard = displayEventReceiverReflector.getCloseGuard();
     // Suppresses noisy CloseGuard warning
@@ -132,33 +121,18 @@ public class ShadowDisplayEventReceiver {
   }
 
   protected void onVsync() {
-    if (RuntimeEnvironment.getApiLevel() <= JELLY_BEAN) {
-      displayEventReceiverReflector.onVsync(ShadowSystem.nanoTime(), 1);
-    } else if (RuntimeEnvironment.getApiLevel() < Q) {
+    if (RuntimeEnvironment.getApiLevel() < Q) {
       displayEventReceiverReflector.onVsync(
           ShadowSystem.nanoTime(), 0, /* SurfaceControl.BUILT_IN_DISPLAY_ID_MAIN */ 1);
     } else if (RuntimeEnvironment.getApiLevel() < S) {
       displayEventReceiverReflector.onVsync(
           ShadowSystem.nanoTime(), 0L, /* SurfaceControl.BUILT_IN_DISPLAY_ID_MAIN */ 1);
     } else if (RuntimeEnvironment.getApiLevel() < TIRAMISU) {
-      try {
-        // onVsync takes a package-private VSyncData class as a parameter, thus reflection
-        // needs to be used
-        Object vsyncData =
-            ReflectionHelpers.callConstructor(
-                Class.forName("android.view.DisplayEventReceiver$VsyncEventData"),
-                ClassParameter.from(long.class, 1), /* id */
-                ClassParameter.from(long.class, 10), /* frameDeadline */
-                ClassParameter.from(long.class, 1)); /* frameInterval */
-
-        displayEventReceiverReflector.onVsync(
-            ShadowSystem.nanoTime(),
-            0L, /* physicalDisplayId currently ignored */
-            /* frame= */ 1,
-            vsyncData /* VsyncEventData */);
-      } catch (ClassNotFoundException e) {
-        throw new LinkageError("Unable to construct VsyncEventData", e);
-      }
+      displayEventReceiverReflector.onVsync(
+          ShadowSystem.nanoTime(),
+          0L, /* physicalDisplayId currently ignored */
+          /* frame= */ 1,
+          newVsyncEventData() /* VsyncEventData */);
     } else {
       displayEventReceiverReflector.onVsync(
           ShadowSystem.nanoTime(),
@@ -239,30 +213,34 @@ public class ShadowDisplayEventReceiver {
     return newVsyncEventData();
   }
 
-  private Object newVsyncEventData() {
+  private static Object /* VsyncEventData */ newVsyncEventData() {
+    VsyncEventDataReflector vsyncEventDataReflector = reflector(VsyncEventDataReflector.class);
+    if (RuntimeEnvironment.getApiLevel() < TIRAMISU) {
+      return vsyncEventDataReflector.newVsyncEventData(
+          /* id= */ 1, /* frameDeadline= */ 10, /* frameInterval= */ 1);
+    }
     try {
       // onVsync on T takes a package-private VsyncEventData class, which is itself composed of a
       // package private VsyncEventData.FrameTimeline  class. So use reflection to build these up
       Class<?> frameTimelineClass =
           Class.forName("android.view.DisplayEventReceiver$VsyncEventData$FrameTimeline");
-      Object timeline =
-          ReflectionHelpers.callConstructor(
-              frameTimelineClass,
-              ClassParameter.from(long.class, 1) /* vsync id */,
-              ClassParameter.from(long.class, 1) /* expectedPresentTime */,
-              ClassParameter.from(long.class, 10) /* deadline */);
 
-      Object timelineArray = Array.newInstance(frameTimelineClass, 1);
-      Array.set(timelineArray, 0, timeline);
-
-      // get FrameTimeline[].class
-      Class<?> frameTimeLineArrayClass =
-          Class.forName("[Landroid.view.DisplayEventReceiver$VsyncEventData$FrameTimeline;");
-      return ReflectionHelpers.callConstructor(
-          Class.forName("android.view.DisplayEventReceiver$VsyncEventData"),
-          ClassParameter.from(frameTimeLineArrayClass, timelineArray),
-          ClassParameter.from(int.class, 0), /* frameDeadline */
-          ClassParameter.from(long.class, 1)); /* frameInterval */
+      int timelineArrayLength = RuntimeEnvironment.getApiLevel() == TIRAMISU ? 1 : 7;
+      FrameTimelineReflector frameTimelineReflector = reflector(FrameTimelineReflector.class);
+      Object timelineArray = Array.newInstance(frameTimelineClass, timelineArrayLength);
+      for (int i = 0; i < timelineArrayLength; i++) {
+        Array.set(timelineArray, i, frameTimelineReflector.newFrameTimeline(1, 1, 10));
+      }
+      if (RuntimeEnvironment.getApiLevel() <= TIRAMISU) {
+        return vsyncEventDataReflector.newVsyncEventData(
+            timelineArray, /* preferredFrameTimelineIndex= */ 0, /* frameInterval= */ 1);
+      } else {
+        return vsyncEventDataReflector.newVsyncEventData(
+            timelineArray,
+            /* preferredFrameTimelineIndex= */ 0,
+            timelineArrayLength,
+            /* frameInterval= */ 1);
+      }
     } catch (ClassNotFoundException e) {
       throw new LinkageError("Unable to construct VsyncEventData", e);
     }
@@ -289,5 +267,35 @@ public class ShadowDisplayEventReceiver {
 
     @Accessor("mCloseGuard")
     CloseGuard getCloseGuard();
+
+    @Accessor("mReceiverPtr")
+    long getReceiverPtr();
+  }
+
+  @ForType(className = "android.view.DisplayEventReceiver$VsyncEventData")
+  interface VsyncEventDataReflector {
+    @Constructor
+    Object newVsyncEventData(long id, long frameDeadline, long frameInterval);
+
+    @Constructor
+    Object newVsyncEventData(
+        @WithType("[Landroid.view.DisplayEventReceiver$VsyncEventData$FrameTimeline;")
+            Object frameTimelineArray,
+        int preferredFrameTimelineIndex,
+        long frameInterval);
+
+    @Constructor
+    Object newVsyncEventData(
+        @WithType("[Landroid.view.DisplayEventReceiver$VsyncEventData$FrameTimeline;")
+            Object frameTimelineArray,
+        int preferredFrameTimelineIndex,
+        int timelineArrayLength,
+        long frameInterval);
+  }
+
+  @ForType(className = "android.view.DisplayEventReceiver$VsyncEventData$FrameTimeline")
+  interface FrameTimelineReflector {
+    @Constructor
+    Object newFrameTimeline(long id, long expectedPresentTime, long deadline);
   }
 }

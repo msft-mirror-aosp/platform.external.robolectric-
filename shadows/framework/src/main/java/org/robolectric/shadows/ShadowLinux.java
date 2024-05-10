@@ -1,6 +1,7 @@
 package org.robolectric.shadows;
 
 import static android.os.Build.VERSION_CODES.N_MR1;
+import static android.os.Build.VERSION_CODES.R;
 
 import android.os.Build;
 import android.system.ErrnoException;
@@ -9,7 +10,9 @@ import android.system.StructStat;
 import android.util.Log;
 import java.io.File;
 import java.io.FileDescriptor;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.RandomAccessFile;
 import java.time.Duration;
 import libcore.io.Linux;
@@ -18,6 +21,7 @@ import org.robolectric.annotation.Implements;
 
 @Implements(value = Linux.class, minSdk = Build.VERSION_CODES.O, isInAndroidSdk = false)
 public class ShadowLinux {
+
   @Implementation
   public void mkdir(String path, int mode) throws ErrnoException {
     new File(path).mkdirs();
@@ -73,6 +77,32 @@ public class ShadowLinux {
     } catch (IOException e) {
       Log.e("ShadowLinux", "open failed for " + path, e);
       throw new ErrnoException("open", OsConstants.EIO);
+    }
+  }
+
+  @Implementation(minSdk = R)
+  protected FileDescriptor memfd_create(String name, int flags) throws ErrnoException {
+    try {
+      File tempFile = File.createTempFile(name, /* suffix= */ "robo_memfd");
+      tempFile.deleteOnExit();
+      RandomAccessFile randomAccessFile = new RandomAccessFile(tempFile, /* mode= */ "rw");
+      return randomAccessFile.getFD();
+    } catch (IOException e) {
+      throw new ErrnoException("memfd_create", OsConstants.EIO, e);
+    }
+  }
+
+  @Implementation
+  protected int pread(FileDescriptor fd, byte[] bytes, int byteOffset, int byteCount, long offset)
+      throws ErrnoException, InterruptedIOException {
+
+    try (FileInputStream fis = new FileInputStream(fd)) {
+      for (long n = offset; n > 0; ) {
+        n -= fis.skip(n);
+      }
+      return fis.read(bytes, byteOffset, byteCount);
+    } catch (IOException e) {
+      return -1;
     }
   }
 

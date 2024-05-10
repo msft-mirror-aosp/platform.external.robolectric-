@@ -1,7 +1,9 @@
 package org.robolectric.res.android;
 
-// transliterated from https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r12/include/androidfw/ResourceTypes.h
+// transliterated from
+// https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r12/include/androidfw/ResourceTypes.h
 
+import static org.robolectric.res.android.Errors.BAD_TYPE;
 import static org.robolectric.res.android.Errors.NO_ERROR;
 import static org.robolectric.res.android.Errors.UNKNOWN_ERROR;
 import static org.robolectric.res.android.ResTable.APP_PACKAGE_ID;
@@ -92,14 +94,26 @@ public class DynamicRefTable
     return NO_ERROR;
   }
 
+  void addAlias(int stagedId, int finalizedId) {
+    mAliasId.put(stagedId, finalizedId);
+  }
+
 //  // Performs the actual conversion of build-time resource ID to run-time
 //  // resource ID.
   int lookupResourceId(Ref<Integer> resId) {
     int res = resId.get();
     int packageId = Res_GETPACKAGE(res) + 1;
 
-    if (packageId == APP_PACKAGE_ID && !mAppAsLib) {
-      // No lookup needs to be done, app package IDs are absolute.
+    Integer aliasId = mAliasId.get(res);
+    if (aliasId != null) {
+      // Rewrite the resource id to its alias resource id. Since the alias resource id is a
+      // compile-time id, it still needs to be resolved further.
+      res = aliasId;
+    }
+
+    if (packageId == SYS_PACKAGE_ID || (packageId == APP_PACKAGE_ID && !mAppAsLib)) {
+      // No lookup needs to be done, app and framework package IDs are absolute.
+      resId.set(res);
       return NO_ERROR;
     }
 
@@ -133,7 +147,15 @@ public class DynamicRefTable
   int lookupResourceValue(Ref<Res_value> value) {
     byte resolvedType = DataType.REFERENCE.code();
     Res_value inValue = value.get();
-    switch (DataType.fromCode(inValue.dataType)) {
+
+    DataType dataType;
+    try {
+      dataType = DataType.fromCode(inValue.dataType);
+    } catch (IllegalArgumentException e) {
+      return BAD_TYPE;
+    }
+
+    switch (dataType) {
       case ATTRIBUTE:
         resolvedType = DataType.ATTRIBUTE.code();
         // fallthrough
@@ -179,4 +201,5 @@ public class DynamicRefTable
   final byte[]                         mLookupTable = new byte[256];
   final Map<String, Byte> mEntries = new HashMap<>();
   boolean                            mAppAsLib;
+  final Map<Integer, Integer> mAliasId = new HashMap<>();
 }

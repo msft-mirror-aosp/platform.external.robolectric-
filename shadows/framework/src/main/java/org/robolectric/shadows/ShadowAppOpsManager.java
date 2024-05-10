@@ -1,17 +1,18 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static java.util.stream.Collectors.toSet;
 import static org.robolectric.shadow.api.Shadow.invokeConstructor;
+import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.RequiresApi;
 import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.app.AppOpsManager;
@@ -31,7 +32,6 @@ import android.os.Build;
 import android.util.ArrayMap;
 import android.util.LongSparseArray;
 import android.util.LongSparseLongArray;
-import androidx.annotation.RequiresApi;
 import com.android.internal.app.IAppOpsService;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Preconditions;
@@ -59,9 +59,11 @@ import org.robolectric.annotation.Resetter;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
+import org.robolectric.util.reflector.Accessor;
+import org.robolectric.util.reflector.ForType;
 
 /** Shadow for {@link AppOpsManager}. */
-@Implements(value = AppOpsManager.class, minSdk = KITKAT, looseSignatures = true)
+@Implements(value = AppOpsManager.class, looseSignatures = true)
 public class ShadowAppOpsManager {
 
   // OpEntry fields that the shadow doesn't currently allow the test to configure.
@@ -146,11 +148,19 @@ public class ShadowAppOpsManager {
       for (Key key : entry.getValue()) {
         if (op == key.getOpCode()
             && (key.getPackageName() == null || key.getPackageName().equals(packageName))) {
-          String[] sOpToString =
-              ReflectionHelpers.getStaticField(AppOpsManager.class, "sOpToString");
-          entry.getKey().onOpChanged(sOpToString[op], packageName);
+          entry.getKey().onOpChanged(getOpString(op), packageName);
         }
       }
+    }
+  }
+
+  protected String getOpString(int opCode) {
+    if (RuntimeEnvironment.getApiLevel() <= TIRAMISU) {
+      String[] sOpToString = ReflectionHelpers.getStaticField(AppOpsManager.class, "sOpToString");
+      return sOpToString[opCode];
+    } else {
+      Object[] sAppOpInfos = ReflectionHelpers.getStaticField(AppOpsManager.class, "sAppOpInfos");
+      return reflector(AppOpInfoReflector.class, sAppOpInfos[opCode]).getName();
     }
   }
 
@@ -265,7 +275,7 @@ public class ShadowAppOpsManager {
   }
 
   /** Stores a fake long-running operation. It does not throw if a wrong uid is passed. */
-  @Implementation(minSdk = KITKAT, maxSdk = Q)
+  @Implementation(maxSdk = Q)
   protected int startOpNoThrow(int op, int uid, String packageName) {
     int mode = unsafeCheckOpRawNoThrow(op, uid, packageName);
     if (mode == AppOpsManager.MODE_ALLOWED) {
@@ -481,7 +491,7 @@ public class ShadowAppOpsManager {
    *
    * <p>This method is public for testing, as the original method is {@code @hide}.
    */
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   @HiddenApi
   public void setRestriction(
       int code, @AttributeUsage int usage, int mode, String[] exceptionPackages) {
@@ -632,5 +642,11 @@ public class ShadowAppOpsManager {
     if (RuntimeEnvironment.getApiLevel() >= R && staticallyInitialized) {
       ReflectionHelpers.setStaticField(AppOpsManager.class, "sOnOpNotedCallback", null);
     }
+  }
+
+  @ForType(className = "android.app.AppOpInfo")
+  interface AppOpInfoReflector {
+    @Accessor("name")
+    String getName();
   }
 }

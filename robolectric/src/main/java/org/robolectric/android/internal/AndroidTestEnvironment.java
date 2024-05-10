@@ -2,11 +2,13 @@ package org.robolectric.android.internal;
 
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.O;
 import static org.robolectric.shadow.api.Shadow.newInstanceOf;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.annotation.SuppressLint;
 import android.app.ActivityThread;
+import android.app.AppCompatCallbacks;
 import android.app.Application;
 import android.app.Instrumentation;
 import android.app.LoadedApk;
@@ -15,7 +17,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.content.pm.PackageParser;
 import android.content.pm.PackageParser.Package;
 import android.content.res.AssetManager;
@@ -37,17 +38,29 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.Objects;
 import javax.annotation.Nonnull;
 import javax.inject.Named;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLSession;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.conscrypt.OkHostnameVerifier;
 import org.conscrypt.OpenSSLProvider;
 import org.robolectric.ApkLoader;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.Bootstrap;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.GraphicsMode.Mode;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.annotation.SQLiteMode;
 import org.robolectric.annotation.experimental.LazyApplication.LazyLoad;
 import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.internal.ResourcesMode;
@@ -56,6 +69,7 @@ import org.robolectric.internal.TestEnvironment;
 import org.robolectric.manifest.AndroidManifest;
 import org.robolectric.manifest.BroadcastReceiverData;
 import org.robolectric.manifest.RoboNotFoundException;
+import org.robolectric.nativeruntime.DefaultNativeRuntimeLoader;
 import org.robolectric.pluginapi.Sdk;
 import org.robolectric.pluginapi.TestEnvironmentLifecyclePlugin;
 import org.robolectric.pluginapi.config.ConfigurationStrategy.Configuration;
@@ -82,17 +96,23 @@ import org.robolectric.shadows.ShadowLog;
 import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
-import org.robolectric.shadows.ShadowPackageParser._Package_;
+import org.robolectric.shadows.ShadowPausedLooper;
+import org.robolectric.shadows.ShadowView;
 import org.robolectric.util.Logger;
 import org.robolectric.util.PerfStatsCollector;
 import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 import org.robolectric.util.Scheduler;
 import org.robolectric.util.TempDirectory;
+import org.robolectric.versioning.AndroidVersions;
+import org.robolectric.versioning.AndroidVersions.V;
 
 @SuppressLint("NewApi")
 public class AndroidTestEnvironment implements TestEnvironment {
 
   private static final String CONSCRYPT_PROVIDER = "Conscrypt";
+  private static final int MAX_DATA_DIR_NAME_LENGTH = 120;
+
   private final Sdk runtimeSdk;
   private final Sdk compileSdk;
 
@@ -122,7 +142,6 @@ public class AndroidTestEnvironment implements TestEnvironment {
     this.shadowProviders = shadowProviders;
     this.testEnvironmentLifecyclePlugins = lifecyclePlugins;
 
-    RuntimeEnvironment.setUseLegacyResources(resourcesMode == ResourcesMode.LEGACY);
     ReflectionHelpers.setStaticField(RuntimeEnvironment.class, "apiLevel", apiLevel);
   }
 
@@ -138,6 +157,13 @@ public class AndroidTestEnvironment implements TestEnvironment {
     }
 
     clearEnvironment();
+
+    // Starting in Android V and above, the native runtime does not support begin lazy-loaded, it
+    // must be loaded upfront.
+    if (shouldLoadNativeRuntime() && RuntimeEnvironment.getApiLevel() >= AndroidVersions.V.SDK_INT) {
+      DefaultNativeRuntimeLoader.injectAndLoad();
+    }
+
     RuntimeEnvironment.setTempDirectory(new TempDirectory(createTestDataDirRootPath(method)));
     if (ShadowLooper.looperMode() == LooperMode.Mode.LEGACY) {
       RuntimeEnvironment.setMasterScheduler(new Scheduler());
@@ -145,12 +171,13 @@ public class AndroidTestEnvironment implements TestEnvironment {
       ShadowLegacyLooper.internalInitializeBackgroundThreadScheduler();
     }
 
+    exportNativeruntimeProperties();
+
     if (!loggingInitialized) {
       ShadowLog.setupLogging();
       loggingInitialized = true;
     }
 
-    Logger.debug("Robolectric Test Configuration: " + configuration.map());
     ConscryptMode.Mode conscryptMode = configuration.get(ConscryptMode.Mode.class);
     Security.removeProvider(CONSCRYPT_PROVIDER);
     if (conscryptMode != ConscryptMode.Mode.OFF) {
@@ -159,6 +186,23 @@ public class AndroidTestEnvironment implements TestEnvironment {
       if (Security.getProvider(CONSCRYPT_PROVIDER) == null) {
         Security.insertProviderAt(new OpenSSLProvider(), 1);
       }
+
+      HttpsURLConnection.setDefaultHostnameVerifier(
+          new HostnameVerifier() {
+            private final OkHostnameVerifier conscryptVerifier = OkHostnameVerifier.INSTANCE;
+
+            @Override
+            public boolean verify(String hostname, SSLSession session) {
+              try {
+                Certificate[] certificates = session.getPeerCertificates();
+                X509Certificate[] x509Certificates =
+                    Arrays.copyOf(certificates, certificates.length, X509Certificate[].class);
+                return conscryptVerifier.verify(x509Certificates, hostname, session);
+              } catch (SSLException e) {
+                return false;
+              }
+            }
+          });
     }
 
     if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
@@ -171,7 +215,9 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     Bootstrap.applyQualifiers(config.qualifiers(), apiLevel, androidConfiguration, displayMetrics);
 
-    if (Boolean.getBoolean("robolectric.nativeruntime.enableGraphics")) {
+    androidConfiguration.fontScale = config.fontScale();
+
+    if (ShadowView.useRealGraphics()) {
       Bitmap.setDefaultDensity(displayMetrics.densityDpi);
     }
     Locale locale =
@@ -180,13 +226,13 @@ public class AndroidTestEnvironment implements TestEnvironment {
             : androidConfiguration.locale;
     Locale.setDefault(locale);
 
-    // Looper needs to be prepared before the activity thread is created
-    if (Looper.myLooper() == null) {
-      Looper.prepareMainLooper();
-    }
     if (ShadowLooper.looperMode() == LooperMode.Mode.LEGACY) {
+      if (Looper.myLooper() == null) {
+        Looper.prepareMainLooper();
+      }
       ShadowLooper.getShadowMainLooper().resetScheduler();
     } else {
+      ShadowPausedLooper.resetLoopers();
       RuntimeEnvironment.setMasterScheduler(new LooperDelegatingScheduler(Looper.getMainLooper()));
     }
 
@@ -194,14 +240,10 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
     RuntimeEnvironment.setAndroidFrameworkJarPath(sdkJarPath);
     Bootstrap.setDisplayConfiguration(androidConfiguration, displayMetrics);
-    RuntimeEnvironment.setActivityThread(ReflectionHelpers.newInstance(ActivityThread.class));
-    ReflectionHelpers.setStaticField(
-        ActivityThread.class, "sMainThreadHandler", new Handler(Looper.myLooper()));
 
     Instrumentation instrumentation = createInstrumentation();
     InstrumentationRegistry.registerInstance(instrumentation, new Bundle());
-    Supplier<Application> applicationSupplier =
-        createApplicationSupplier(appManifest, config, androidConfiguration, displayMetrics);
+    Supplier<Application> applicationSupplier = createApplicationSupplier(appManifest, config);
     RuntimeEnvironment.setApplicationSupplier(applicationSupplier);
 
     if (configuration.get(LazyLoad.class) == LazyLoad.ON) {
@@ -211,6 +253,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       // force eager load of the application
       RuntimeEnvironment.getApplication();
     }
+
   }
 
   // If certain Android classes are required to be loaded in a particular order, do so here.
@@ -230,10 +273,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
 
   // TODO Move synchronization logic into its own class for better readability
   private Supplier<Application> createApplicationSupplier(
-      AndroidManifest appManifest,
-      Config config,
-      android.content.res.Configuration androidConfiguration,
-      DisplayMetrics displayMetrics) {
+      AndroidManifest appManifest, Config config) {
     final ActivityThread activityThread = (ActivityThread) RuntimeEnvironment.getActivityThread();
     final _ActivityThread_ _activityThread_ = reflector(_ActivityThread_.class, activityThread);
     final ShadowActivityThread shadowActivityThread = Shadow.extract(activityThread);
@@ -247,8 +287,6 @@ public class AndroidTestEnvironment implements TestEnvironment {
                         installAndCreateApplication(
                             appManifest,
                             config,
-                            androidConfiguration,
-                            displayMetrics,
                             shadowActivityThread,
                             _activityThread_,
                             activityThread.getInstrumentation())));
@@ -257,8 +295,6 @@ public class AndroidTestEnvironment implements TestEnvironment {
   private Application installAndCreateApplication(
       AndroidManifest appManifest,
       Config config,
-      android.content.res.Configuration androidConfiguration,
-      DisplayMetrics displayMetrics,
       ShadowActivityThread shadowActivityThread,
       _ActivityThread_ activityThreadReflector,
       Instrumentation androidInstrumentation) {
@@ -275,6 +311,9 @@ public class AndroidTestEnvironment implements TestEnvironment {
     Package parsedPackage = loadAppPackage(config, appManifest);
 
     ApplicationInfo applicationInfo = parsedPackage.applicationInfo;
+    Class<? extends Application> applicationClass =
+        getApplicationClass(appManifest, config, applicationInfo);
+    applicationInfo.className = applicationClass.getName();
 
     ComponentName actualComponentName =
         new ComponentName(
@@ -297,13 +336,16 @@ public class AndroidTestEnvironment implements TestEnvironment {
     // code in there that can be reusable, e.g: the XxxxIntentResolver code.
     ShadowActivityThread.setApplicationInfo(applicationInfo);
 
+    // Bootstrap.getConfiguration gets any potential updates to configuration via
+    // RuntimeEnvironment.setQualifiers.
+    android.content.res.Configuration androidConfiguration = Bootstrap.getConfiguration();
     shadowActivityThread.setCompatConfiguration(androidConfiguration);
 
     Bootstrap.setUpDisplay();
     activityThread.applyConfigurationToResources(androidConfiguration);
 
-    Application application = createApplication(appManifest, config, applicationInfo);
-    RuntimeEnvironment.setConfiguredApplicationClass(application.getClass());
+    Application application = ReflectionHelpers.callConstructor(applicationClass);
+    RuntimeEnvironment.setConfiguredApplicationClass(applicationClass);
 
     RuntimeEnvironment.application = application;
 
@@ -314,7 +356,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
       } catch (ClassNotFoundException e) {
         throw new RuntimeException(e);
       }
-      final Object appBindData = ReflectionHelpers.newInstance(appBindDataClass);
+      final Object appBindData = ReflectionHelpers.callConstructor(appBindDataClass);
       final _AppBindData_ _appBindData_ = reflector(_AppBindData_.class, appBindData);
       _appBindData_.setProcessName(parsedPackage.packageName);
       _appBindData_.setAppInfo(applicationInfo);
@@ -324,18 +366,8 @@ public class AndroidTestEnvironment implements TestEnvironment {
           activityThread.getPackageInfo(applicationInfo, null, Context.CONTEXT_INCLUDE_CODE);
       final _LoadedApk_ _loadedApk_ = reflector(_LoadedApk_.class, loadedApk);
 
-      Context contextImpl;
-      if (apiLevel >= VERSION_CODES.LOLLIPOP) {
-        contextImpl = reflector(_ContextImpl_.class).createAppContext(activityThread, loadedApk);
-      } else {
-        try {
-          contextImpl =
-              systemContextImpl.createPackageContext(
-                  applicationInfo.packageName, Context.CONTEXT_INCLUDE_CODE);
-        } catch (PackageManager.NameNotFoundException e) {
-          throw new RuntimeException(e);
-        }
-      }
+      Context contextImpl =
+          reflector(_ContextImpl_.class).createAppContext(activityThread, loadedApk);
       ShadowPackageManager shadowPackageManager = Shadow.extract(contextImpl.getPackageManager());
       shadowPackageManager.addPackageInternal(parsedPackage);
       activityThreadReflector.setInitialApplication(application);
@@ -354,14 +386,26 @@ public class AndroidTestEnvironment implements TestEnvironment {
         // Preload fonts resources
         FontsContract.setApplicationContextForResources(application);
       }
-      registerBroadcastReceivers(application, appManifest);
+      registerBroadcastReceivers(application, appManifest, loadedApk);
 
-      appResources.updateConfiguration(androidConfiguration, displayMetrics);
-      // propagate any updates to configuration via RuntimeEnvironment.setQualifiers
-      Bootstrap.updateConfiguration(appResources);
+      appResources.updateConfiguration(androidConfiguration, Bootstrap.getDisplayMetrics());
 
       if (ShadowAssetManager.useLegacy()) {
         populateAssetPaths(appResources.getAssets(), appManifest);
+      }
+
+      // Circumvent the 'No Compatibility callbacks set!' log. See #8509
+      if (apiLevel >= AndroidVersions.V.SDK_INT) {
+        // Adds loggableChanges parameter.
+        ReflectionHelpers.callStaticMethod(
+            AppCompatCallbacks.class,
+            "install",
+            ClassParameter.from(long[].class, new long[0]),
+            ClassParameter.from(long[].class, new long[0]));
+      } else if (apiLevel >= AndroidVersions.R.SDK_INT) {
+        // Invoke the previous version.
+        ReflectionHelpers.callStaticMethod(
+            AppCompatCallbacks.class, "install", ClassParameter.from(long[].class, new long[0]));
       }
 
       PerfStatsCollector.getInstance()
@@ -403,7 +447,17 @@ public class AndroidTestEnvironment implements TestEnvironment {
       RuntimeEnvironment.compileTimeSystemResourcesFile = compileSdk.getJarPath();
 
       Path packageFile = appManifest.getApkFile();
-      parsedPackage = ShadowPackageParser.callParsePackage(packageFile);
+      if (packageFile != null) {
+        parsedPackage = ShadowPackageParser.callParsePackage(packageFile);
+      } else {
+        parsedPackage = new Package("org.robolectric.default");
+        parsedPackage.applicationInfo.targetSdkVersion = appManifest.getTargetSdkVersion();
+      }
+    }
+    if (parsedPackage != null
+        && parsedPackage.applicationInfo != null
+        && RuntimeEnvironment.getApiLevel() >= P) {
+      parsedPackage.applicationInfo.appComponentFactory = appManifest.getAppComponentFactory();
     }
     return parsedPackage;
   }
@@ -465,13 +519,7 @@ public class AndroidTestEnvironment implements TestEnvironment {
   }
 
   @VisibleForTesting
-  static Application createApplication(
-      AndroidManifest appManifest, Config config, ApplicationInfo applicationInfo) {
-    return ReflectionHelpers.callConstructor(
-        getApplicationClass(appManifest, config, applicationInfo));
-  }
-
-  private static Class<? extends Application> getApplicationClass(
+  static Class<? extends Application> getApplicationClass(
       AndroidManifest appManifest, Config config, ApplicationInfo applicationInfo) {
     Class<? extends Application> applicationClass = null;
     if (config != null && !Config.Builder.isDefaultApplication(config.application())) {
@@ -539,36 +587,33 @@ public class AndroidTestEnvironment implements TestEnvironment {
     }
   }
 
+  protected Instrumentation pickInstrumentation() {
+    return new RoboMonitoringInstrumentation();
+  }
+
   private Instrumentation createInstrumentation() {
-    final ActivityThread activityThread = (ActivityThread) RuntimeEnvironment.getActivityThread();
-    final _ActivityThread_ activityThreadReflector =
-        reflector(_ActivityThread_.class, activityThread);
+    Instrumentation androidInstrumentation = pickInstrumentation();
+    androidInstrumentation.runOnMainSync(
+        () -> {
+          ActivityThread activityThread = ReflectionHelpers.callConstructor(ActivityThread.class);
+          ReflectionHelpers.setStaticField(
+              ActivityThread.class, "sMainThreadHandler", new Handler(Looper.getMainLooper()));
+          reflector(_ActivityThread_.class, activityThread)
+              .setInstrumentation(androidInstrumentation);
+          RuntimeEnvironment.setActivityThread(activityThread);
 
-    Instrumentation androidInstrumentation = new RoboMonitoringInstrumentation();
-    activityThreadReflector.setInstrumentation(androidInstrumentation);
-
-    Application dummyInitialApplication = new Application();
-    final ComponentName dummyInitialComponent =
-        new ComponentName("", androidInstrumentation.getClass().getSimpleName());
-    // TODO Move the API check into a helper method inside ShadowInstrumentation
-    if (RuntimeEnvironment.getApiLevel() <= VERSION_CODES.JELLY_BEAN_MR1) {
-      reflector(_Instrumentation_.class, androidInstrumentation)
-          .init(
-              activityThread,
-              dummyInitialApplication,
-              dummyInitialApplication,
-              dummyInitialComponent,
-              null);
-    } else {
-      reflector(_Instrumentation_.class, androidInstrumentation)
-          .init(
-              activityThread,
-              dummyInitialApplication,
-              dummyInitialApplication,
-              dummyInitialComponent,
-              null,
-              null);
-    }
+          Application dummyInitialApplication = new Application();
+          final ComponentName dummyInitialComponent =
+              new ComponentName("", androidInstrumentation.getClass().getSimpleName());
+          reflector(_Instrumentation_.class, androidInstrumentation)
+              .init(
+                  activityThread,
+                  dummyInitialApplication,
+                  dummyInitialApplication,
+                  dummyInitialComponent,
+                  null,
+                  null);
+        });
 
     androidInstrumentation.onCreate(new Bundle());
     return androidInstrumentation;
@@ -577,15 +622,20 @@ public class AndroidTestEnvironment implements TestEnvironment {
   /** Create a file system safe directory path name for the current test. */
   @SuppressWarnings("DoNotCall")
   private String createTestDataDirRootPath(Method method) {
-    return method.getClass().getSimpleName()
-        + "_"
-        + method.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+    // Cap the size to 120 to avoid unnecessarily long directory names.
+    String directoryName =
+        (method.getDeclaringClass().getSimpleName() + "_" + method.getName())
+            .replaceAll("[^a-zA-Z0-9.-]", "_");
+    if (directoryName.length() > MAX_DATA_DIR_NAME_LENGTH) {
+      directoryName = directoryName.substring(0, MAX_DATA_DIR_NAME_LENGTH);
+    }
+    return directoryName;
   }
 
   @Override
   public void tearDownApplication() {
     if (RuntimeEnvironment.application != null) {
-      RuntimeEnvironment.application.onTerminate();
+      ShadowInstrumentation.runOnMainSyncNoIdle(RuntimeEnvironment.getApplication()::onTerminate);
       ShadowInstrumentation.getInstrumentation().finish(1, new Bundle());
     }
   }
@@ -656,17 +706,8 @@ public class AndroidTestEnvironment implements TestEnvironment {
       applicationInfo.publicSourceDir =
           createTempDir(applicationInfo.packageName + "-publicSourceDir");
     } else {
-      if (apiLevel <= VERSION_CODES.KITKAT) {
-        String sourcePath = reflector(_Package_.class, parsedPackage).getPath();
-        if (sourcePath == null) {
-          sourcePath = createTempDir("sourceDir");
-        }
-        applicationInfo.publicSourceDir = sourcePath;
-        applicationInfo.sourceDir = sourcePath;
-      } else {
-        applicationInfo.publicSourceDir = parsedPackage.codePath;
-        applicationInfo.sourceDir = parsedPackage.codePath;
-      }
+      applicationInfo.publicSourceDir = parsedPackage.codePath;
+      applicationInfo.sourceDir = parsedPackage.codePath;
     }
 
     applicationInfo.dataDir = createTempDir(applicationInfo.packageName + "-dataDir");
@@ -684,16 +725,45 @@ public class AndroidTestEnvironment implements TestEnvironment {
         .toString();
   }
 
+  private static BroadcastReceiver newBroadcastReceiverFromP(
+      String receiverClassName, LoadedApk loadedApk) {
+    ClassLoader classLoader = Shadow.class.getClassLoader();
+    if (loadedApk == null || loadedApk.getAppFactory() == null) {
+      return (BroadcastReceiver) newInstanceOf(receiverClassName);
+    } else {
+      try {
+        return loadedApk.getAppFactory().instantiateReceiver(classLoader, receiverClassName, null);
+      } catch (ReflectiveOperationException e) {
+        Logger.warn(
+            "Failed to initialize receiver %s with AppComponentFactory %s: %s",
+            receiverClassName, loadedApk.getAppFactory(), e);
+      }
+    }
+    return null;
+  }
+
+  private static boolean shouldLoadNativeRuntime() {
+    GraphicsMode.Mode graphicsMode = ConfigurationRegistry.get(GraphicsMode.Mode.class);
+    SQLiteMode.Mode sqliteMode = ConfigurationRegistry.get(SQLiteMode.Mode.class);
+    return graphicsMode == GraphicsMode.Mode.NATIVE || sqliteMode == SQLiteMode.Mode.NATIVE;
+  }
+
   // TODO move/replace this with packageManager
   @VisibleForTesting
-  static void registerBroadcastReceivers(Application application, AndroidManifest androidManifest) {
+  static void registerBroadcastReceivers(
+      Application application, AndroidManifest androidManifest, LoadedApk loadedApk) {
     for (BroadcastReceiverData receiver : androidManifest.getBroadcastReceivers()) {
       IntentFilter filter = new IntentFilter();
       for (String action : receiver.getActions()) {
         filter.addAction(action);
       }
-      String receiverClassName = replaceLastDotWith$IfInnerStaticClass(receiver.getName());
-      application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      String receiverClassName = receiver.getName();
+      if (loadedApk != null && RuntimeEnvironment.getApiLevel() >= P) {
+        application.registerReceiver(
+            newBroadcastReceiverFromP(receiverClassName, loadedApk), filter);
+      } else {
+        application.registerReceiver((BroadcastReceiver) newInstanceOf(receiverClassName), filter);
+      }
     }
   }
 
@@ -709,5 +779,12 @@ public class AndroidTestEnvironment implements TestEnvironment {
       return buffer.toString();
     }
     return receiverClassName;
+  }
+
+  private static void exportNativeruntimeProperties() {
+    GraphicsMode.Mode graphicsMode = ConfigurationRegistry.get(GraphicsMode.Mode.class);
+    System.setProperty(
+        "robolectric.nativeruntime.enableGraphics",
+        Boolean.toString(graphicsMode == Mode.NATIVE && RuntimeEnvironment.getApiLevel() >= O));
   }
 }

@@ -5,7 +5,6 @@ import static android.app.PendingIntent.FLAG_IMMUTABLE;
 import static android.app.PendingIntent.FLAG_NO_CREATE;
 import static android.app.PendingIntent.FLAG_ONE_SHOT;
 import static android.app.PendingIntent.FLAG_UPDATE_CURRENT;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
@@ -230,7 +229,7 @@ public class ShadowPendingIntent {
       // Copy the last intent before filling it in to avoid modifying this PendingIntent.
       intentsToSend = Arrays.copyOf(savedIntents, savedIntents.length);
       Intent lastIntentCopy = new Intent(intentsToSend[intentsToSend.length - 1]);
-      lastIntentCopy.fillIn(intent, 0);
+      lastIntentCopy.fillIn(intent, flags);
       intentsToSend[intentsToSend.length - 1] = lastIntentCopy;
     } else {
       intentsToSend = savedIntents;
@@ -331,6 +330,18 @@ public class ShadowPendingIntent {
   @Implementation(minSdk = S)
   public boolean isImmutable() {
     return (flags & FLAG_IMMUTABLE) > 0;
+  }
+
+  @Implementation
+  protected boolean isTargetedToPackage() {
+    // This is weird and we know it. See:
+    // https://googleplex-android.googlesource.com/platform/frameworks/base/+/f24a737c89de326199eb6d9f5912eae24b5514e6/services/core/java/com/android/server/am/ActivityManagerService.java#5377
+    for (Intent intent : savedIntents) {
+      if (intent.getPackage() != null && intent.getComponent() != null) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -465,7 +476,7 @@ public class ShadowPendingIntent {
     return getCreatorPackage();
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected String getCreatorPackage() {
     return (creatorPackage == null)
         ? RuntimeEnvironment.getApplication().getPackageName()
@@ -476,7 +487,7 @@ public class ShadowPendingIntent {
     this.creatorPackage = creatorPackage;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected int getCreatorUid() {
     return creatorUid;
   }
@@ -679,7 +690,9 @@ public class ShadowPendingIntent {
   public static void reset() {
     synchronized (lock) {
       createdIntents.clear();
+      parceledPendingIntents.clear();
     }
+
   }
 
   @ForType(PendingIntent.class)

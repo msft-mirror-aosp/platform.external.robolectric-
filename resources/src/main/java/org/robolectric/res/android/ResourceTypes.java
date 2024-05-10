@@ -8,6 +8,7 @@ import static org.robolectric.res.android.Util.SIZEOF_INT;
 import static org.robolectric.res.android.Util.SIZEOF_SHORT;
 import static org.robolectric.res.android.Util.dtohl;
 import static org.robolectric.res.android.Util.dtohs;
+import static org.robolectric.res.android.Util.isTruthy;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -161,6 +162,7 @@ public class ResourceTypes {
   public static final int RES_TABLE_TYPE_TYPE         = 0x0201;
   public static final int RES_TABLE_TYPE_SPEC_TYPE    = 0x0202;
   public static final int RES_TABLE_LIBRARY_TYPE      = 0x0203;
+  public static final int RES_TABLE_STAGED_ALIAS_TYPE = 0x0206;
 
   /**
    * Macros for building/splitting resource identifiers.
@@ -341,7 +343,7 @@ public class ResourceTypes {
     }
 
     public Res_value(byte dataType, int data) {
-      this.size = 0;
+      this.size = SIZEOF;
 //      this.res0 = 0;
       this.dataType = dataType;
       this.data = data;
@@ -1164,6 +1166,11 @@ public static class ResTable_ref
     // Mark any types that use this with a v26 qualifier to prevent runtime issues on older
     // platforms.
     public static final int FLAG_SPARSE = 0x01;
+
+    // If set, the offsets to the entries are encoded in 16-bit, real_offset = offset * 4u
+    // An 16-bit offset of 0xffffu means a NO_ENTRY
+    public static final int FLAG_OFFSET16 = 0x02;
+
     //    };
     final byte flags;
 
@@ -1198,7 +1205,12 @@ public static class ResTable_ref
     public int findEntryByResName(int stringId) {
       for (int i = 0; i < entryCount; i++) {
         if (entryNameIndex(i) == stringId) {
-          return i;
+          if (isTruthy(flags & ResTable_type.FLAG_SPARSE)) {
+            ResTable_sparseTypeEntry sparseEntry = getSparseEntry(i);
+            return sparseEntry.idx;
+          } else {
+            return i;
+          }
         }
       }
       return -1;
@@ -1207,13 +1219,27 @@ public static class ResTable_ref
     int entryOffset(int entryIndex) {
       ByteBuffer byteBuffer = myBuf();
       int offset = myOffset();
+      if (isTruthy(flags & ResTable_type.FLAG_OFFSET16)) {
+        short off16 = byteBuffer.getShort(offset + header.headerSize + entryIndex * 2);
+        // Check for no entry (0xffff short)
+        return dtohs(off16) == -1 ? ResTable_type.NO_ENTRY : dtohs(off16) * 4;
+      } else if (isTruthy(flags & ResTable_type.FLAG_SPARSE)) {
+        ResTable_sparseTypeEntry sparseEntry = getSparseEntry(entryIndex);
+        // if (!sparse_entry) {
+        //   return base::unexpected(IOError::PAGES_MISSING);
+        // }
+        // TODO: implement above
+        // offset = dtohs(sparse_entry->offset) * 4u;
+        return dtohs(sparseEntry.offset) * 4;
+      } else {
+        return byteBuffer.getInt(offset + header.headerSize + entryIndex * 4);
+      }
+    }
 
-      // from ResTable cpp:
-//            const uint32_t* const eindex = reinterpret_cast<const uint32_t*>(
-//            reinterpret_cast<const uint8_t*>(thisType) + dtohs(thisType->header.headerSize));
-//
-//        uint32_t thisOffset = dtohl(eindex[realEntryIndex]);
-      return byteBuffer.getInt(offset + header.headerSize + entryIndex * 4);
+    // Gets the sparse entry index item at position 'entryIndex'
+    private ResTable_sparseTypeEntry getSparseEntry(int entryIndex) {
+      return new ResTable_sparseTypeEntry(
+          myBuf(), myOffset() + header.headerSize + entryIndex * ResTable_sparseTypeEntry.SIZEOF);
     }
 
     private int entryNameIndex(int entryIndex) {
@@ -1221,11 +1247,13 @@ public static class ResTable_ref
       int offset = myOffset();
 
       // from ResTable cpp:
-//            const uint32_t* const eindex = reinterpret_cast<const uint32_t*>(
-//            reinterpret_cast<const uint8_t*>(thisType) + dtohs(thisType->header.headerSize));
-//
-//        uint32_t thisOffset = dtohl(eindex[realEntryIndex]);
-      int entryOffset = byteBuffer.getInt(offset + header.headerSize + entryIndex * 4);
+      //            const uint32_t* const eindex = reinterpret_cast<const uint32_t*>(
+      //            reinterpret_cast<const uint8_t*>(thisType) +
+      // dtohs(thisType->header.headerSize));
+      //
+      //        uint32_t thisOffset = dtohl(eindex[realEntryIndex]);
+
+      int entryOffset = entryOffset(entryIndex);
       if (entryOffset == -1) {
         return -1;
       }
@@ -1281,9 +1309,8 @@ public static class ResTable_ref
     public static final int SIZEOF = 4 + ResStringPool_ref.SIZEOF;
 
     // Number of bytes in this structure.
-    final short size;
+    short size;
 
-    //enum {
     // If set, this is a complex entry, holding a set of name/value
     // mappings.  It is followed by an array of ResTable_map structures.
     public static final int FLAG_COMPLEX = 0x0001;
@@ -1294,18 +1321,42 @@ public static class ResTable_ref
     // resources of the same name/type. This is only useful during
     // linking with other resource tables.
     public static final int FLAG_WEAK = 0x0004;
-    //    };
+    // If set, this is a compact entry with data type and value directly
+    // encoded in the this entry, see ResTable_entry::compact
+    public static final int FLAG_COMPACT = 0x0008;
+
     final short flags;
 
     // Reference into ResTable_package::keyStrings identifying this entry.
-    final ResStringPool_ref key;
+    ResStringPool_ref key;
+
+    int compactData;
+    short compactKey;
 
     ResTable_entry(ByteBuffer buf, int offset) {
       super(buf, offset);
 
-      size = buf.getShort(offset);
       flags = buf.getShort(offset + 2);
-      key = new ResStringPool_ref(buf, offset + 4);
+
+      if (isCompact()) {
+        compactKey = buf.getShort(offset);
+        compactData = buf.getInt(offset + 4);
+      } else {
+        size = buf.getShort(offset);
+        key = new ResStringPool_ref(buf, offset + 4);
+      }
+    }
+
+    public int getKeyIndex() {
+      if (isCompact()) {
+        return dtohs(compactKey);
+      } else {
+        return key.index;
+      }
+    }
+
+    public boolean isCompact() {
+      return (flags & FLAG_COMPACT) == FLAG_COMPACT;
     }
 
     public Res_value getResValue() {
@@ -1314,7 +1365,12 @@ public static class ResTable_ref
       // final Res_value device_value = reinterpret_cast<final Res_value>(
       //     reinterpret_cast<final byte*>(entry) + dtohs(entry.size));
 
-      return new Res_value(myBuf(), myOffset() + dtohs(size));
+      if (isCompact()) {
+        byte type = (byte) (dtohs(flags) >> 8);
+        return new Res_value(type, compactData);
+      } else {
+        return new Res_value(myBuf(), myOffset() + dtohs(size));
+      }
     }
   }
 
@@ -1502,6 +1558,44 @@ public static class ResTable_ref
       }
     }
   };
+
+  /**
+   * A map that allows rewriting staged (non-finalized) resource ids to their finalized
+   * counterparts.
+   */
+  static class ResTableStagedAliasHeader extends WithOffset {
+    public static final int SIZEOF = ResChunk_header.SIZEOF + 4;
+
+    ResChunk_header header;
+
+    // The number of ResTableStagedAliasEntry that follow this header.
+    int count;
+
+    ResTableStagedAliasHeader(ByteBuffer buf, int offset) {
+      super(buf, offset);
+
+      header = new ResChunk_header(buf, offset);
+      count = buf.getInt(offset + ResChunk_header.SIZEOF);
+    }
+  }
+
+  /** Maps the staged (non-finalized) resource id to its finalized resource id. */
+  static class ResTableStagedAliasEntry extends WithOffset {
+    public static final int SIZEOF = 8;
+
+    // The compile-time staged resource id to rewrite.
+    int stagedResId;
+
+    // The compile-time finalized resource id to which the staged resource id should be rewritten.
+    int finalizedResId;
+
+    ResTableStagedAliasEntry(ByteBuffer buf, int offset) {
+      super(buf, offset);
+
+      stagedResId = buf.getInt(offset);
+      finalizedResId = buf.getInt(offset + 4);
+    }
+  }
 
   // struct alignas(uint32_t) Idmap_header {
   static class Idmap_header extends WithOffset {

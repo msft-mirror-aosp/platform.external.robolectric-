@@ -16,6 +16,7 @@ import static android.content.pm.ApplicationInfo.FLAG_SUPPORTS_SMALL_SCREENS;
 import static android.content.pm.ApplicationInfo.FLAG_VM_SAFE_MODE;
 import static android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+import static android.content.pm.PackageManager.EXTRA_VERIFICATION_ID;
 import static android.content.pm.PackageManager.FLAG_PERMISSION_GRANTED_BY_DEFAULT;
 import static android.content.pm.PackageManager.FLAG_PERMISSION_SYSTEM_FIXED;
 import static android.content.pm.PackageManager.FLAG_PERMISSION_USER_FIXED;
@@ -30,14 +31,13 @@ import static android.content.pm.PackageManager.SIGNATURE_NO_MATCH;
 import static android.content.pm.PackageManager.SIGNATURE_SECOND_NOT_SIGNED;
 import static android.content.pm.PackageManager.SIGNATURE_UNKNOWN_PACKAGE;
 import static android.content.pm.PackageManager.VERIFICATION_ALLOW;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
+import static android.content.pm.PackageManager.VERIFICATION_REJECT;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.N_MR1;
 import static android.os.Build.VERSION_CODES.O;
+import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
@@ -48,6 +48,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -62,6 +63,7 @@ import android.Manifest.permission_group;
 import android.app.Activity;
 import android.app.Application;
 import android.app.admin.DevicePolicyManager;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -78,6 +80,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.ApplicationInfoFlags;
+import android.content.pm.PackageManager.ComponentEnabledSetting;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.PackageManager.OnPermissionsChangedListener;
 import android.content.pm.PackageManager.PackageInfoFlags;
@@ -92,12 +95,14 @@ import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.content.pm.Signature;
+import android.content.pm.SigningInfo;
 import android.content.pm.SuspendDialogInfo;
 import android.content.res.XmlResourceParser;
 import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.PersistableBundle;
@@ -127,6 +132,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.robolectric.R;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
@@ -153,6 +159,7 @@ public class ShadowPackageManagerTest {
   private static final String REAL_TEST_APP_PACKAGE_NAME = "org.robolectric.exampleapp";
   private static final String TEST_PACKAGE3_NAME = "com.a.third.package";
   private static final int TEST_PACKAGE_VERSION_CODE = 10000;
+  public static final int INSTALL_VERIFICATION_ID = 1234;
 
   @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
   private Context context;
@@ -173,7 +180,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void packageInstallerCreateSession() throws Exception {
     PackageInstaller packageInstaller = context.getPackageManager().getPackageInstaller();
     int sessionId = packageInstaller.createSession(createSessionParams("packageName"));
@@ -189,7 +195,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void packageInstallerOpenSession() throws Exception {
     PackageInstaller packageInstaller = context.getPackageManager().getPackageInstaller();
     int sessionId = packageInstaller.createSession(createSessionParams("packageName"));
@@ -963,8 +968,18 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  public void getApplicationInfo_ThisApplication() throws Exception {
+  public void getApplicationInfo_thisApplication() throws Exception {
     ApplicationInfo info = packageManager.getApplicationInfo(context.getPackageName(), 0);
+    assertThat(info).isNotNull();
+    assertThat(info.packageName).isEqualTo(context.getPackageName());
+    assertThat(info.processName).isEqualTo(info.packageName);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getApplicationInfo_thisApplication_withApplicationInfoFlags() throws Exception {
+    ApplicationInfo info =
+        packageManager.getApplicationInfo(context.getPackageName(), ApplicationInfoFlags.of(0));
     assertThat(info).isNotNull();
     assertThat(info.packageName).isEqualTo(context.getPackageName());
     assertThat(info.processName).isEqualTo(info.packageName);
@@ -981,11 +996,39 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
+  @Config(minSdk = TIRAMISU)
+  public void
+      getApplicationInfo_uninstalledApplication_includeUninstalled_withApplicationInfoFlags()
+          throws Exception {
+    shadowOf(packageManager).deletePackage(context.getPackageName());
+
+    ApplicationInfo info =
+        packageManager.getApplicationInfo(
+            context.getPackageName(), ApplicationInfoFlags.of(MATCH_UNINSTALLED_PACKAGES));
+    assertThat(info).isNotNull();
+    assertThat(info.packageName).isEqualTo(context.getPackageName());
+  }
+
+  @Test
   public void getApplicationInfo_uninstalledApplication_dontIncludeUninstalled() {
     shadowOf(packageManager).deletePackage(context.getPackageName());
 
     try {
       packageManager.getApplicationInfo(context.getPackageName(), 0);
+      fail("PackageManager.NameNotFoundException not thrown");
+    } catch (PackageManager.NameNotFoundException e) {
+      // expected
+    }
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void
+      getApplicationInfo_uninstalledApplication_dontIncludeUninstalled_withApplicationInfoFlags() {
+    shadowOf(packageManager).deletePackage(context.getPackageName());
+
+    try {
+      packageManager.getApplicationInfo(context.getPackageName(), ApplicationInfoFlags.of(0));
       fail("PackageManager.NameNotFoundException not thrown");
     } catch (PackageManager.NameNotFoundException e) {
       // expected
@@ -1003,8 +1046,29 @@ public class ShadowPackageManagerTest {
     }
   }
 
+  @Test(expected = PackageManager.NameNotFoundException.class)
+  @Config(minSdk = TIRAMISU)
+  public void
+      getApplicationInfo_whenUnknown_shouldThrowNameNotFoundException_withApplicationInfoFlags()
+          throws Exception {
+    try {
+      packageManager.getApplicationInfo("unknown_package", ApplicationInfoFlags.of(0));
+      fail("should have thrown NameNotFoundException");
+    } catch (PackageManager.NameNotFoundException e) {
+      assertThat(e.getMessage()).contains("unknown_package");
+      throw e;
+    }
+  }
+
   @Test
-  public void getApplicationInfo_OtherApplication() throws Exception {
+  public void getApplicationInfo_nullPackage_shouldThrowNameNotFoundException() {
+    assertThrows(
+        PackageManager.NameNotFoundException.class,
+        () -> packageManager.getApplicationInfo(null, 0));
+  }
+
+  @Test
+  public void getApplicationInfo_otherApplication() throws Exception {
     PackageInfo packageInfo = new PackageInfo();
     packageInfo.packageName = TEST_PACKAGE_NAME;
     packageInfo.applicationInfo = new ApplicationInfo();
@@ -1013,6 +1077,23 @@ public class ShadowPackageManagerTest {
     shadowOf(packageManager).installPackage(packageInfo);
 
     ApplicationInfo info = packageManager.getApplicationInfo(TEST_PACKAGE_NAME, 0);
+    assertThat(info).isNotNull();
+    assertThat(info.packageName).isEqualTo(TEST_PACKAGE_NAME);
+    assertThat(packageManager.getApplicationLabel(info).toString()).isEqualTo(TEST_PACKAGE_LABEL);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getApplicationInfo_otherApplication_withApplicationInfoFlags() throws Exception {
+    PackageInfo packageInfo = new PackageInfo();
+    packageInfo.packageName = TEST_PACKAGE_NAME;
+    packageInfo.applicationInfo = new ApplicationInfo();
+    packageInfo.applicationInfo.packageName = TEST_PACKAGE_NAME;
+    packageInfo.applicationInfo.name = TEST_PACKAGE_LABEL;
+    shadowOf(packageManager).installPackage(packageInfo);
+
+    ApplicationInfo info =
+        packageManager.getApplicationInfo(TEST_PACKAGE_NAME, ApplicationInfoFlags.of(0));
     assertThat(info).isNotNull();
     assertThat(info.packageName).isEqualTo(TEST_PACKAGE_NAME);
     assertThat(packageManager.getApplicationLabel(info).toString()).isEqualTo(TEST_PACKAGE_LABEL);
@@ -1093,7 +1174,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
   public void queryIntentActivitiesAsUser_EmptyResult() {
     Intent i = new Intent(Intent.ACTION_APP_ERROR, null);
     i.addCategory(Intent.CATEGORY_APP_BROWSER);
@@ -1103,7 +1183,26 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
+  @Config(minSdk = TIRAMISU)
+  public void queryIntentActivities_Match_withResolveInfoFlags() {
+    Intent i = new Intent(Intent.ACTION_MAIN, null);
+    i.addCategory(Intent.CATEGORY_LAUNCHER);
+
+    ResolveInfo info = new ResolveInfo();
+    info.nonLocalizedLabel = TEST_PACKAGE_LABEL;
+    info.activityInfo = new ActivityInfo();
+    info.activityInfo.name = "name";
+    info.activityInfo.packageName = TEST_PACKAGE_NAME;
+
+    shadowOf(packageManager).addResolveInfoForIntent(i, info);
+
+    List<ResolveInfo> activities = packageManager.queryIntentActivities(i, ResolveInfoFlags.of(0));
+    assertThat(activities).isNotNull();
+    assertThat(activities).hasSize(2);
+    assertThat(activities.get(0).nonLocalizedLabel.toString()).isEqualTo(TEST_PACKAGE_LABEL);
+  }
+
+  @Test
   public void queryIntentActivitiesAsUser_Match() {
     Intent i = new Intent(Intent.ACTION_MAIN, null);
     i.addCategory(Intent.CATEGORY_LAUNCHER);
@@ -1114,6 +1213,24 @@ public class ShadowPackageManagerTest {
     shadowOf(packageManager).addResolveInfoForIntent(i, info);
 
     List<ResolveInfo> activities = packageManager.queryIntentActivitiesAsUser(i, 0, 0);
+    assertThat(activities).isNotNull();
+    assertThat(activities).hasSize(2);
+    assertThat(activities.get(0).nonLocalizedLabel.toString()).isEqualTo(TEST_PACKAGE_LABEL);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void queryIntentActivitiesAsUser_Match_withResolveInfoFlags() {
+    Intent i = new Intent(Intent.ACTION_MAIN, null);
+    i.addCategory(Intent.CATEGORY_LAUNCHER);
+
+    ResolveInfo info = new ResolveInfo();
+    info.nonLocalizedLabel = TEST_PACKAGE_LABEL;
+
+    shadowOf(packageManager).addResolveInfoForIntent(i, info);
+
+    List<ResolveInfo> activities =
+        packageManager.queryIntentActivitiesAsUser(i, ResolveInfoFlags.of(0), 0);
     assertThat(activities).isNotNull();
     assertThat(activities).hasSize(2);
     assertThat(activities.get(0).nonLocalizedLabel.toString()).isEqualTo(TEST_PACKAGE_LABEL);
@@ -1301,7 +1418,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentActivities_appHidden_includeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1319,7 +1435,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentActivities_appHidden_dontIncludeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1385,7 +1500,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
   public void resolveActivityAsUser_Match() {
     Intent i = new Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER);
     ResolveInfo info = new ResolveInfo();
@@ -1409,7 +1523,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
   public void resolveActivityAsUser_NoMatch() {
     Intent i = new Intent();
     i.setComponent(new ComponentName("foo.bar", "No Activity"));
@@ -1553,7 +1666,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentServices_appHidden_includeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1569,7 +1681,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentServices_appHidden_dontIncludeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1582,7 +1693,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
   public void queryIntentServicesAsUser() {
     Intent i = new Intent("org.robolectric.ACTION_DIFFERENT_PACKAGE");
     i.addCategory(Intent.CATEGORY_LAUNCHER);
@@ -1629,7 +1739,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryBroadcastReceivers_appHidden_includeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1647,7 +1756,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryBroadcastReceivers_appHidden_dontIncludeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1660,7 +1768,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentContentProviders_EmptyResult() {
     Intent i = new Intent(DocumentsContract.PROVIDER_INTERFACE);
 
@@ -1669,7 +1776,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentContentProviders_Match() {
     Intent i = new Intent(DocumentsContract.PROVIDER_INTERFACE);
 
@@ -1686,7 +1792,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentContentProviders_MatchSystemOnly() {
     Intent i = new Intent(DocumentsContract.PROVIDER_INTERFACE);
 
@@ -1711,7 +1816,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentContentProviders_MatchDisabledComponents() {
     Intent i = new Intent(DocumentsContract.PROVIDER_INTERFACE);
 
@@ -1735,7 +1839,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void queryIntentContentProviders_appHidden_includeUninstalled() {
     String packageName = context.getPackageName();
     packageManager.setApplicationHiddenSettingAsUser(
@@ -1988,6 +2091,16 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
+  @Config(minSdk = TIRAMISU)
+  public void testReceiverInfo_withComponentInfoFlags() throws Exception {
+    ActivityInfo info =
+        packageManager.getReceiverInfo(
+            new ComponentName(context, "org.robolectric.test.ConfigTestReceiver"),
+            PackageManager.ComponentInfoFlags.of(PackageManager.GET_META_DATA));
+    assertThat(info.metaData.getInt("numberOfSheep")).isEqualTo(42);
+  }
+
+  @Test
   public void testGetPackageInfo_ForReceiversIncorrectPackage() {
     try {
       packageManager.getPackageInfo("unknown_package", PackageManager.GET_RECEIVERS);
@@ -1995,6 +2108,36 @@ public class ShadowPackageManagerTest {
     } catch (PackageManager.NameNotFoundException e) {
       assertThat(e.getMessage()).contains("unknown_package");
     }
+  }
+
+  @Test
+  @Config(maxSdk = O)
+  public void getPackageInfo_shouldPopulateSignatures() throws Exception {
+    Signature testSignature = new Signature("00000000");
+    PackageInfo testPackageInfo = newPackageInfo("first.package", testSignature);
+    assertThat(testPackageInfo.signatures).isNotNull();
+    assertThat(testPackageInfo.signatures.length).isEqualTo(1);
+    shadowOf(packageManager).installPackage(testPackageInfo);
+    PackageInfo packageInfo =
+        packageManager.getPackageInfo("first.package", PackageManager.GET_SIGNATURES);
+    assertThat(packageInfo.signatures).isNotNull();
+    assertThat(packageInfo.signatures.length).isEqualTo(1);
+    assertThat(packageInfo.signatures[0]).isEqualTo(testSignature);
+  }
+
+  @Test
+  @Config(minSdk = P)
+  public void getPackageInfo_shouldPopulateSigningInfo() throws Exception {
+    Signature testSignature = new Signature("00000000");
+    PackageInfo testPackageInfo = newPackageInfo("first.package", testSignature);
+    shadowOf(packageManager).installPackage(testPackageInfo);
+    PackageInfo packageInfo =
+        packageManager.getPackageInfo("first.package", PackageManager.GET_SIGNING_CERTIFICATES);
+    assertThat(packageInfo.signingInfo).isNotNull();
+    assertThat(packageInfo.signingInfo.getApkContentsSigners()).isNotNull();
+    assertThat(packageInfo.signingInfo.getApkContentsSigners().length).isEqualTo(1);
+    assertThat(packageInfo.signingInfo.getApkContentsSigners()[0]).isEqualTo(testSignature);
+    assertThat(packageInfo.signingInfo.getSigningCertificateHistory()).isNotNull();
   }
 
   @Test
@@ -2246,7 +2389,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void testLeanbackLaunchIntentForPackage() {
     Intent intent = packageManager.getLeanbackLaunchIntentForPackage(TEST_PACKAGE_LABEL);
     assertThat(intent).isNull();
@@ -2444,6 +2586,74 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
+  @Config(minSdk = TIRAMISU)
+  public void getServiceInfo_withComponentInfoFlags_shouldReturnServiceInfoIfExists()
+      throws Exception {
+    ServiceInfo serviceInfo =
+        packageManager.getServiceInfo(
+            new ComponentName("org.robolectric", "com.foo.Service"),
+            PackageManager.ComponentInfoFlags.of(0));
+    assertThat(serviceInfo.packageName).isEqualTo("org.robolectric");
+    assertThat(serviceInfo.name).isEqualTo("com.foo.Service");
+    assertThat(serviceInfo.permission).isEqualTo("com.foo.MY_PERMISSION");
+    assertThat(serviceInfo.applicationInfo).isNotNull();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void
+      getServiceInfo_withComponentInfoFlags_shouldReturnServiceInfoWithMetaDataWhenFlagsSet()
+          throws Exception {
+    ServiceInfo serviceInfo =
+        packageManager.getServiceInfo(
+            new ComponentName("org.robolectric", "com.foo.Service"),
+            PackageManager.ComponentInfoFlags.of(PackageManager.GET_META_DATA));
+    assertThat(serviceInfo.metaData).isNotNull();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void
+      getServiceInfo_withComponentInfoFlags_shouldReturnServiceInfoWithoutMetaDataWhenFlagsNotSet()
+          throws Exception {
+    ComponentName component = new ComponentName("org.robolectric", "com.foo.Service");
+    ServiceInfo serviceInfo =
+        packageManager.getServiceInfo(component, PackageManager.ComponentInfoFlags.of(0));
+    assertThat(serviceInfo.metaData).isNull();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getServiceInfo_withComponentInfoFlags_shouldThrowNameNotFoundExceptionIfNotExist() {
+    ComponentName nonExistComponent =
+        new ComponentName("org.robolectric", "com.foo.NonExistService");
+    try {
+      packageManager.getServiceInfo(
+          nonExistComponent, PackageManager.ComponentInfoFlags.of(PackageManager.GET_SERVICES));
+      fail("should have thrown NameNotFoundException");
+    } catch (PackageManager.NameNotFoundException e) {
+      assertThat(e.getMessage()).contains("com.foo.NonExistService");
+    }
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getServiceInfo_withComponentInfoFlags_shouldFindServiceIfAddedInResolveInfo()
+      throws Exception {
+    ComponentName componentName = new ComponentName("com.test", "com.test.ServiceName");
+    ResolveInfo resolveInfo = new ResolveInfo();
+    resolveInfo.serviceInfo = new ServiceInfo();
+    resolveInfo.serviceInfo.name = componentName.getClassName();
+    resolveInfo.serviceInfo.applicationInfo = new ApplicationInfo();
+    resolveInfo.serviceInfo.applicationInfo.packageName = componentName.getPackageName();
+    shadowOf(packageManager).addResolveInfoForIntent(new Intent("RANDOM_ACTION"), resolveInfo);
+
+    ServiceInfo serviceInfo =
+        packageManager.getServiceInfo(componentName, PackageManager.ComponentInfoFlags.of(0));
+    assertThat(serviceInfo).isNotNull();
+  }
+
+  @Test
   public void getNameForUid() {
     assertThat(packageManager.getNameForUid(10)).isNull();
 
@@ -2616,11 +2826,73 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
-  public void extendPendingInstallTimeout() {
-    packageManager.extendVerificationTimeout(1234, 0, 1000);
+  public void
+      extendPendingInstallTimeout_verificationRejectAtTimeout_extendsPendingInstallTimeoutAndsetsCodeAtTimeoutToReject() {
+    packageManager.extendVerificationTimeout(
+        INSTALL_VERIFICATION_ID,
+        /* verificationCodeAtTimeout= */ VERIFICATION_REJECT,
+        /* millisecondsToDelay= */ 1000);
 
-    assertThat(shadowOf(packageManager).getVerificationExtendedTimeout(1234)).isEqualTo(1000);
+    assertThat(shadowOf(packageManager).getVerificationExtendedTimeout(INSTALL_VERIFICATION_ID))
+        .isEqualTo(1000);
+    assertThat(
+            shadowOf(packageManager).getVerificationCodeAtTimeoutExtension(INSTALL_VERIFICATION_ID))
+        .isEqualTo(VERIFICATION_REJECT);
+  }
+
+  @Test
+  public void
+      extendPendingInstallTimeout_verificationAllowAtTimeout_extendsPendingInstallTimeoutAndsetsCodeAtTimeoutToAllow() {
+    packageManager.extendVerificationTimeout(
+        INSTALL_VERIFICATION_ID,
+        /* verificationCodeAtTimeout= */ VERIFICATION_ALLOW,
+        /* millisecondsToDelay= */ 1000);
+
+    assertThat(shadowOf(packageManager).getVerificationExtendedTimeout(INSTALL_VERIFICATION_ID))
+        .isEqualTo(1000);
+    assertThat(
+            shadowOf(packageManager).getVerificationCodeAtTimeoutExtension(INSTALL_VERIFICATION_ID))
+        .isEqualTo(VERIFICATION_ALLOW);
+  }
+
+  @Test
+  public void whenVerificationTimeOutNotExtended_verificationCodeAtTimeoutIsAllow() {
+    assertThat(shadowOf(packageManager).getVerificationExtendedTimeout(INSTALL_VERIFICATION_ID))
+        .isEqualTo(0);
+    // Default verdict is to allow installation.
+    assertThat(
+            shadowOf(packageManager).getVerificationCodeAtTimeoutExtension(INSTALL_VERIFICATION_ID))
+        .isEqualTo(VERIFICATION_ALLOW);
+  }
+
+  @Test
+  public void triggerInstallVerificationTimeout_broadcastsPackageVerifiedIntent() {
+    ShadowPackageManager shadowPackageManagerMock =
+        mock(ShadowPackageManager.class, Mockito.CALLS_REAL_METHODS);
+
+    doReturn(VERIFICATION_REJECT)
+        .when(shadowPackageManagerMock)
+        .getVerificationCodeAtTimeoutExtension(INSTALL_VERIFICATION_ID);
+
+    List<Integer> verificationIdList = new ArrayList<>();
+    List<Integer> verificationResultList = new ArrayList<>();
+    BroadcastReceiver receiver =
+        new BroadcastReceiver() {
+          @Override
+          public void onReceive(Context context, Intent intent) {
+            verificationIdList.add(intent.getIntExtra(EXTRA_VERIFICATION_ID, 0));
+            verificationResultList.add(
+                intent.getIntExtra(PackageManager.EXTRA_VERIFICATION_RESULT, 0));
+          }
+        };
+    IntentFilter intentFilter = new IntentFilter(Intent.ACTION_PACKAGE_VERIFIED);
+    context.registerReceiver(receiver, intentFilter);
+
+    shadowPackageManagerMock.triggerInstallVerificationTimeout(
+        (Application) context, INSTALL_VERIFICATION_ID);
+
+    assertThat(verificationIdList).containsExactly(INSTALL_VERIFICATION_ID);
+    assertThat(verificationResultList).containsExactly(VERIFICATION_REJECT);
   }
 
   @Test
@@ -2865,7 +3137,12 @@ public class ShadowPackageManagerTest {
   private static PackageInfo newPackageInfo(String packageName, Signature... signatures) {
     PackageInfo firstPackageInfo = new PackageInfo();
     firstPackageInfo.packageName = packageName;
-    firstPackageInfo.signatures = signatures;
+    if (VERSION.SDK_INT < P) {
+      firstPackageInfo.signatures = signatures;
+    } else {
+      firstPackageInfo.signingInfo = new SigningInfo();
+      shadowOf(firstPackageInfo.signingInfo).setSignatures(signatures);
+    }
     return firstPackageInfo;
   }
 
@@ -3063,6 +3340,14 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
+  @Config(minSdk = VERSION_CODES.R)
+  public void getInstallerSourceInfo_notExists_throwsException() throws Exception {
+    assertThrows(
+        NameNotFoundException.class,
+        () -> packageManager.getInstallSourceInfo("nonExistTarget.package"));
+  }
+
+  @Test
   public void getXml() {
     XmlResourceParser in =
         packageManager.getXml(
@@ -3071,7 +3356,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void addPackageShouldNotCreateSessions() {
 
     PackageInfo packageInfo = new PackageInfo();
@@ -3155,6 +3439,21 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
+  @Config(minSdk = TIRAMISU)
+  public void addService_withComponentInfoFlags() throws Exception {
+    ServiceInfo serviceInfo = new ServiceInfo();
+    serviceInfo.name = "name";
+    serviceInfo.packageName = "package";
+
+    shadowOf(packageManager).addOrUpdateService(serviceInfo);
+
+    assertThat(
+            packageManager.getServiceInfo(
+                new ComponentName("package", "name"), PackageManager.ComponentInfoFlags.of(0)))
+        .isNotNull();
+  }
+
+  @Test
   public void addProvider() throws Exception {
     ProviderInfo providerInfo = new ProviderInfo();
     providerInfo.name = "name";
@@ -3174,6 +3473,21 @@ public class ShadowPackageManagerTest {
     shadowOf(packageManager).addOrUpdateReceiver(receiverInfo);
 
     assertThat(packageManager.getReceiverInfo(new ComponentName("package", "name"), 0)).isNotNull();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void addReceiver_withComponentInfoFlags() throws Exception {
+    ActivityInfo receiverInfo = new ActivityInfo();
+    receiverInfo.name = "name";
+    receiverInfo.packageName = "package";
+
+    shadowOf(packageManager).addOrUpdateReceiver(receiverInfo);
+
+    assertThat(
+            packageManager.getReceiverInfo(
+                new ComponentName("package", "name"), PackageManager.ComponentInfoFlags.of(0)))
+        .isNotNull();
   }
 
   @Test
@@ -3251,6 +3565,22 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
+  @Config(minSdk = TIRAMISU)
+  public void removeService_withComponentInfoFlags() {
+    ComponentName componentName = new ComponentName(context, "com.foo.Service");
+
+    ServiceInfo removed = shadowOf(packageManager).removeService(componentName);
+
+    assertThat(removed).isNotNull();
+    try {
+      packageManager.getServiceInfo(componentName, PackageManager.ComponentInfoFlags.of(0));
+      fail();
+    } catch (NameNotFoundException e) {
+      // expected
+    }
+  }
+
+  @Test
   public void removeProvider() {
     ComponentName componentName =
         new ComponentName(context, "org.robolectric.shadows.testing.TestContentProvider1");
@@ -3276,6 +3606,23 @@ public class ShadowPackageManagerTest {
     assertThat(removed).isNotNull();
     try {
       packageManager.getReceiverInfo(componentName, 0);
+      fail();
+    } catch (NameNotFoundException e) {
+      // expected
+    }
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void removeReceiver_withComponentInfoFlags() {
+    ComponentName componentName =
+        new ComponentName(context, "org.robolectric.fakes.ConfigTestReceiver");
+
+    ActivityInfo removed = shadowOf(packageManager).removeReceiver(componentName);
+
+    assertThat(removed).isNotNull();
+    try {
+      packageManager.getReceiverInfo(componentName, PackageManager.ComponentInfoFlags.of(0));
       fail();
     } catch (NameNotFoundException e) {
       // expected
@@ -3363,7 +3710,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void getApplicationHiddenSettingAsUser_hidden() {
     String packageName = context.getPackageName();
 
@@ -3375,7 +3721,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void getApplicationHiddenSettingAsUser_notHidden() {
     String packageName = context.getPackageName();
 
@@ -3384,14 +3729,12 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void getApplicationHiddenSettingAsUser_unknownPackage() {
     assertThat(packageManager.getApplicationHiddenSettingAsUser("not.a.package", /* user= */ null))
         .isTrue();
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setApplicationHiddenSettingAsUser_includeUninstalled() throws Exception {
     String packageName = context.getPackageName();
 
@@ -3408,7 +3751,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setApplicationHiddenSettingAsUser_dontIncludeUninstalled() {
     String packageName = context.getPackageName();
 
@@ -4167,7 +4509,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR2)
   public void getPackagesHoldingPermissions_returnPackages() {
     String permissionA = "com.android.providers.permission.test.a";
     String permissionB = "com.android.providers.permission.test.b";
@@ -4194,7 +4535,6 @@ public class ShadowPackageManagerTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR2)
   public void getPackagesHoldingPermissions_returnsEmpty() {
     String permissionA = "com.android.providers.permission.test.a";
 
@@ -4343,6 +4683,89 @@ public class ShadowPackageManagerTest {
         new ComponentName(RuntimeEnvironment.getApplication().getPackageName(), "mycomponentname");
     assertThrows(
         NameNotFoundException.class, () -> packageManager.getProperty("myproperty", componentName));
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setComponentEnabledSettingsSameSettings_getComponentEnabledSettingsConsistent() {
+    ShadowApplicationPackageManager pm = (ShadowApplicationPackageManager) shadowOf(packageManager);
+    ComponentName componentName0 = new ComponentName(context, "mycomponentname0");
+    ComponentName componentName1 = new ComponentName(context, "mycomponentname1");
+    ComponentEnabledSetting componentEnabledSetting0 =
+        new ComponentEnabledSetting(
+            componentName0,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP);
+    ComponentEnabledSetting componentEnabledSetting1 =
+        new ComponentEnabledSetting(
+            componentName1,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP);
+    ImmutableList<ComponentEnabledSetting> componentEnabledSettings =
+        ImmutableList.of(componentEnabledSetting0, componentEnabledSetting1);
+
+    pm.setComponentEnabledSettings(componentEnabledSettings);
+
+    for (ComponentEnabledSetting setting : componentEnabledSettings) {
+      assertThat(pm.getComponentEnabledSetting(setting.getComponentName()))
+          .isEqualTo(setting.getEnabledState());
+    }
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setComponentEnabledSettingsDifferentSettings_getComponentEnabledSettingsConsistent() {
+    ShadowApplicationPackageManager pm = (ShadowApplicationPackageManager) shadowOf(packageManager);
+    ComponentName componentName0 = new ComponentName(context, "mycomponentname0");
+    ComponentName componentName1 = new ComponentName(context, "mycomponentname1");
+    ComponentEnabledSetting componentEnabledSetting0 =
+        new ComponentEnabledSetting(
+            componentName0,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP);
+    ComponentEnabledSetting componentEnabledSetting1 =
+        new ComponentEnabledSetting(
+            componentName1,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP);
+    ImmutableList<ComponentEnabledSetting> componentEnabledSettings =
+        ImmutableList.of(componentEnabledSetting0, componentEnabledSetting1);
+
+    pm.setComponentEnabledSettings(componentEnabledSettings);
+
+    for (ComponentEnabledSetting setting : componentEnabledSettings) {
+      assertThat(pm.getComponentEnabledSetting(setting.getComponentName()))
+          .isEqualTo(setting.getEnabledState());
+    }
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void setSyntheticAppDetailsActivityEnabled_getConsistent() {
+    ShadowApplicationPackageManager pm = (ShadowApplicationPackageManager) shadowOf(packageManager);
+
+    pm.setSyntheticAppDetailsActivityEnabled(TEST_PACKAGE_NAME, true);
+    boolean before = pm.getSyntheticAppDetailsActivityEnabled(TEST_PACKAGE_NAME);
+    pm.setSyntheticAppDetailsActivityEnabled(TEST_PACKAGE_NAME, false);
+    boolean after = pm.getSyntheticAppDetailsActivityEnabled(TEST_PACKAGE_NAME);
+
+    assertThat(before).isTrue();
+    assertThat(after).isFalse();
+  }
+
+  @Test
+  @Config(minSdk = N)
+  public void setDefaultBrowserPackageNameAsUser_getConsistent() {
+    ShadowApplicationPackageManager pm = (ShadowApplicationPackageManager) shadowOf(packageManager);
+
+    boolean isSuccessful = pm.setDefaultBrowserPackageNameAsUser(TEST_PACKAGE_NAME, 0);
+
+    String defaultBrowserPackageNameUserAvailable = pm.getDefaultBrowserPackageNameAsUser(0);
+    String defaultBrowserPackageNameUserNotAvailable = pm.getDefaultBrowserPackageNameAsUser(10);
+
+    assertThat(isSuccessful).isTrue();
+    assertThat(defaultBrowserPackageNameUserAvailable).isEqualTo(TEST_PACKAGE_NAME);
+    assertThat(defaultBrowserPackageNameUserNotAvailable).isNull();
   }
 
   public String[] setPackagesSuspended(

@@ -2,13 +2,14 @@ package org.robolectric.android.internal;
 
 import static android.os.Build.VERSION_CODES.O;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.TruthJUnit.assume;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeTrue;
 import static org.robolectric.annotation.ConscryptMode.Mode.OFF;
 import static org.robolectric.annotation.ConscryptMode.Mode.ON;
 import static org.robolectric.annotation.LooperMode.Mode.LEGACY;
 
 import android.app.Application;
+import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -120,7 +121,6 @@ public class AndroidTestEnvironmentTest {
   @ConscryptMode(ON)
   public void testWhenConscryptModeOn_ConscryptInstalled()
       throws CertificateException, NoSuchAlgorithmException {
-
     bootstrapWrapper.callSetUpApplicationState();
     CertificateFactory factory = CertificateFactory.getInstance("X.509");
     assertThat(factory.getProvider().getName()).isEqualTo("Conscrypt");
@@ -141,7 +141,6 @@ public class AndroidTestEnvironmentTest {
   @ConscryptMode(OFF)
   public void testWhenConscryptModeOff_ConscryptNotInstalled()
       throws CertificateException, NoSuchAlgorithmException {
-
     bootstrapWrapper.callSetUpApplicationState();
     CertificateFactory factory = CertificateFactory.getInstance("X.509");
     assertThat(factory.getProvider().getName()).isNotEqualTo("Conscrypt");
@@ -153,12 +152,12 @@ public class AndroidTestEnvironmentTest {
   @Test
   @ConscryptMode(OFF)
   public void testWhenConscryptModeOff_BouncyCastleInstalled() throws GeneralSecurityException {
-
     bootstrapWrapper.callSetUpApplicationState();
-    MessageDigest digest = MessageDigest.getInstance("SHA256");
+    MessageDigest digest = MessageDigest.getInstance("SHA256", BouncyCastleProvider.PROVIDER_NAME);
     assertThat(digest.getProvider().getName()).isEqualTo(BouncyCastleProvider.PROVIDER_NAME);
 
-    Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
+    Cipher aesCipher =
+        Cipher.getInstance("AES/CBC/PKCS7Padding", BouncyCastleProvider.PROVIDER_NAME);
     assertThat(aesCipher.getProvider().getName()).isEqualTo(BouncyCastleProvider.PROVIDER_NAME);
   }
 
@@ -193,7 +192,7 @@ public class AndroidTestEnvironmentTest {
   }
 
   @Test
-  public void setUpApplicationState_shouldCreateStorageDirs() throws Exception {
+  public void setUpApplicationState_shouldCreateStorageDirs() {
     bootstrapWrapper.callSetUpApplicationState();
     ApplicationInfo applicationInfo = ApplicationProvider.getApplicationContext()
         .getApplicationInfo();
@@ -210,7 +209,7 @@ public class AndroidTestEnvironmentTest {
 
   @Test
   @Config(minSdk = Build.VERSION_CODES.N)
-  public void setUpApplicationState_shouldCreateStorageDirs_Nplus() throws Exception {
+  public void setUpApplicationState_shouldCreateStorageDirs_Nplus() {
     bootstrapWrapper.callSetUpApplicationState();
     ApplicationInfo applicationInfo = ApplicationProvider.getApplicationContext()
         .getApplicationInfo();
@@ -240,7 +239,7 @@ public class AndroidTestEnvironmentTest {
   @Test
   public void testResourceNotFound() {
     // not relevant for binary resources mode
-    assumeTrue(bootstrapWrapper.isLegacyResources());
+    assume().that(bootstrapWrapper.isLegacyResources()).isTrue();
 
     try {
       bootstrapWrapper.changeAppManifest(new ThrowingManifest(bootstrapWrapper.getAppManifest()));
@@ -269,24 +268,27 @@ public class AndroidTestEnvironmentTest {
     }
   }
 
-  @Test @Config(qualifiers = "b+fr+Cyrl+UK")
-  public void localeIsSet() throws Exception {
+  @Test
+  @Config(qualifiers = "b+fr+Cyrl+UK")
+  public void localeIsSet() {
     bootstrapWrapper.callSetUpApplicationState();
     assertThat(Locale.getDefault().getLanguage()).isEqualTo("fr");
     assertThat(Locale.getDefault().getScript()).isEqualTo("Cyrl");
     assertThat(Locale.getDefault().getCountry()).isEqualTo("UK");
   }
 
-  @Test @Config(qualifiers = "w123dp-h456dp")
-  public void whenNotPrefixedWithPlus_setQualifiers_shouldNotBeBasedOnPreviousConfig() throws Exception {
+  @Test
+  @Config(qualifiers = "w123dp-h456dp")
+  public void whenNotPrefixedWithPlus_setQualifiers_shouldNotBeBasedOnPreviousConfig() {
     bootstrapWrapper.callSetUpApplicationState();
     RuntimeEnvironment.setQualifiers("land");
     assertThat(RuntimeEnvironment.getQualifiers()).contains("w470dp-h320dp");
     assertThat(RuntimeEnvironment.getQualifiers()).contains("-land-");
   }
 
-  @Test @Config(qualifiers = "w100dp-h125dp")
-  public void whenDimensAndSizeSpecified_setQualifiers_should() throws Exception {
+  @Test
+  @Config(qualifiers = "w100dp-h125dp")
+  public void whenDimensAndSizeSpecified_setQualifiers_should() {
     bootstrapWrapper.callSetUpApplicationState();
     RuntimeEnvironment.setQualifiers("+xlarge");
     Configuration configuration = Resources.getSystem().getConfiguration();
@@ -295,11 +297,33 @@ public class AndroidTestEnvironmentTest {
     assertThat(DeviceConfig.getScreenSize(configuration)).isEqualTo(ScreenSize.xlarge);
   }
 
-  @Test @Config(qualifiers = "w123dp-h456dp")
-  public void whenPrefixedWithPlus_setQualifiers_shouldBeBasedOnPreviousConfig() throws Exception {
+  @Test
+  @Config(qualifiers = "w123dp-h456dp")
+  public void whenPrefixedWithPlus_setQualifiers_shouldBeBasedOnPreviousConfig() {
     bootstrapWrapper.callSetUpApplicationState();
     RuntimeEnvironment.setQualifiers("+w124dp");
     assertThat(RuntimeEnvironment.getQualifiers()).contains("w124dp-h456dp");
+  }
+
+  @Test
+  @Config(fontScale = 1.3f)
+  public void setFontScale_updatesFontScale() {
+    bootstrapWrapper.callSetUpApplicationState();
+
+    Context context = ApplicationProvider.getApplicationContext();
+    DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+    assertThat(context.getResources().getConfiguration().fontScale).isEqualTo(1.3f);
+    assertThat(displayMetrics.scaledDensity).isEqualTo(displayMetrics.density * 1.3f);
+  }
+
+  @Test
+  public void fontScaleNotSet_stillSetToDefault() {
+    bootstrapWrapper.callSetUpApplicationState();
+
+    Context context = ApplicationProvider.getApplicationContext();
+    DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+    assertThat(context.getResources().getConfiguration().fontScale).isEqualTo(1.0f);
+    assertThat(displayMetrics.scaledDensity).isEqualTo(displayMetrics.density);
   }
 
   @LazyApplication(LazyLoad.ON)
@@ -329,5 +353,15 @@ public class AndroidTestEnvironmentTest {
     assertThat(displayMetrics.densityDpi).isEqualTo(DisplayMetrics.DENSITY_HIGH);
     assertThat(RuntimeEnvironment.getQualifiers()).contains("w640dp-h480dp");
     assertThat(RuntimeEnvironment.getQualifiers()).contains("land");
+  }
+
+  @Test
+  public void
+      thisTestNameHasMoreThan255Characters1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890() {
+    bootstrapWrapper.callSetUpApplicationState();
+    ApplicationInfo applicationInfo =
+        ApplicationProvider.getApplicationContext().getApplicationInfo();
+    assertThat(applicationInfo.dataDir).isNotNull();
+    assertThat(new File(applicationInfo.dataDir).isDirectory()).isTrue();
   }
 }

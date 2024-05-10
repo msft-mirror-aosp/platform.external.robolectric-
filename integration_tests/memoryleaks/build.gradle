@@ -4,11 +4,12 @@ apply plugin: 'com.android.library'
 apply plugin: AndroidProjectConfigPlugin
 
 android {
-    compileSdk 33
+    compileSdk 34
+    namespace 'org.robolectric.integrationtests.memoryleaks'
 
     defaultConfig {
-        minSdk 16
-        targetSdk 33
+        minSdk 19
+        targetSdk 34
     }
 
     compileOptions {
@@ -21,14 +22,13 @@ android {
             includeAndroidResources = true
         }
     }
-
 }
 
 dependencies {
     // Testing dependencies
-    testImplementation project(path: ':testapp')
+    testImplementation project(":testapp")
     testImplementation project(":robolectric")
-    testImplementation "junit:junit:$junitVersion"
-    testImplementation "com.google.guava:guava-testlib:$guavaJREVersion"
-    testImplementation("androidx.fragment:fragment:1.3.4")
+    testImplementation libs.junit4
+    testImplementation libs.guava.testlib
+    testImplementation libs.androidx.fragment
 }

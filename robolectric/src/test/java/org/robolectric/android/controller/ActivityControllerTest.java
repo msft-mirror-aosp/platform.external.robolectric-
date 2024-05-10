@@ -11,10 +11,10 @@ import static org.robolectric.shadows.ShadowLooper.shadowMainLooper;
 
 import android.app.Activity;
 import android.app.Fragment;
+import android.app.WindowConfiguration;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.res.Configuration;
-import android.os.Build;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Handler;
@@ -184,7 +184,6 @@ public class ActivityControllerTest {
   }
 
   @Test
-  @Config(minSdk = VERSION_CODES.JELLY_BEAN_MR1)
   public void destroy_cleansUpWindowManagerState() {
     WindowManager windowManager = controller.get().getWindowManager();
     ShadowWindowManagerImpl shadowWindowManager =
@@ -253,8 +252,7 @@ public class ActivityControllerTest {
   }
 
   @Test
-  @Config(sdk = Build.VERSION_CODES.KITKAT)
-  public void attach_shouldWorkWithAPI19() {
+  public void attach_shouldWork() {
     MyActivity activity = Robolectric.buildActivity(MyActivity.class).create().get();
     assertThat(activity).isNotNull();
   }
@@ -298,6 +296,31 @@ public class ActivityControllerTest {
     assertThat(transcript).containsAtLeast("onConfigurationChanged", "View.onConfigurationChanged");
     assertThat(configController.get().getResources().getConfiguration().fontScale)
         .isEqualTo(newFontScale);
+  }
+
+  @Config(minSdk = P)
+  @Test
+  public void configurationChange_windowConfigurationChanges_doesNotRecreateActivity() {
+    Configuration config =
+        new Configuration(
+            ApplicationProvider.getApplicationContext().getResources().getConfiguration());
+    WindowConfiguration windowConfiguration = config.windowConfiguration;
+    windowConfiguration.setWindowingMode(WindowConfiguration.WINDOWING_MODE_FULLSCREEN);
+
+    ActivityController<ConfigAwareActivity> controller =
+        Robolectric.buildActivity(ConfigAwareActivity.class).setup();
+    transcript.clear();
+    controller.configurationChange(config);
+
+    assertThat(transcript).containsAtLeast("onConfigurationChanged", "View.onConfigurationChanged");
+    assertThat(
+            controller
+                .get()
+                .getResources()
+                .getConfiguration()
+                .windowConfiguration
+                .getWindowingMode())
+        .isEqualTo(WindowConfiguration.WINDOWING_MODE_FULLSCREEN);
   }
 
   @Test
@@ -360,6 +383,38 @@ public class ActivityControllerTest {
     assertThat(activity.retainedFragment).isSameInstanceAs(retainedFragment);
     assertThat(activity.nonRetainedFragment).isNotNull();
     assertThat(activity.nonRetainedFragment).isNotSameInstanceAs(otherFragment);
+  }
+
+  @Test
+  public void isChangingConfiguration() {
+    try (ActivityController<ConfigChangeActivity> controller =
+        Robolectric.buildActivity(ConfigChangeActivity.class)) {
+
+      controller.recreate();
+
+      assertThat(transcript).containsExactly("onPause true", "onStop true", "onDestroy true");
+    }
+  }
+
+  private static class ConfigChangeActivity extends Activity {
+
+    @Override
+    public void onPause() {
+      super.onPause();
+      transcript.add("onPause " + isChangingConfigurations());
+    }
+
+    @Override
+    public void onStop() {
+      super.onStop();
+      transcript.add("onStop " + isChangingConfigurations());
+    }
+
+    @Override
+    public void onDestroy() {
+      super.onDestroy();
+      transcript.add("onDestroy " + isChangingConfigurations());
+    }
   }
 
   @Test

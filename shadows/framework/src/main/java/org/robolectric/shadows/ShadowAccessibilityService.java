@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
@@ -16,11 +15,15 @@ import android.graphics.ColorSpace.Named;
 import android.hardware.HardwareBuffer;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.util.SparseArray;
+import android.view.Display;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
+import com.google.common.collect.ArrayListMultimap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import javax.annotation.Nullable;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.util.ReflectionHelpers;
@@ -35,7 +38,8 @@ public class ShadowAccessibilityService extends ShadowService {
 
   private final List<Integer> globalActionsPerformed = new ArrayList<>();
   private List<AccessibilityNodeInfo.AccessibilityAction> systemActions;
-  private final List<AccessibilityWindowInfo> windows = new ArrayList<>();
+  private final ArrayListMultimap<Integer, AccessibilityWindowInfo> windows =
+      ArrayListMultimap.create();
   private final List<GestureDispatch> gesturesDispatched = new ArrayList<>();
 
   private boolean canDispatchGestures = true;
@@ -46,7 +50,7 @@ public class ShadowAccessibilityService extends ShadowService {
   private boolean isScreenshotError = false;
 
   @Implementation
-  protected final boolean performGlobalAction(int action) {
+  protected boolean performGlobalAction(int action) {
     globalActionsPerformed.add(action);
     return true;
   }
@@ -56,7 +60,7 @@ public class ShadowAccessibilityService extends ShadowService {
   }
 
   @Implementation(minSdk = S)
-  protected final List<AccessibilityNodeInfo.AccessibilityAction> getSystemActions() {
+  protected List<AccessibilityNodeInfo.AccessibilityAction> getSystemActions() {
     return systemActions;
   }
 
@@ -66,13 +70,41 @@ public class ShadowAccessibilityService extends ShadowService {
   }
 
   /**
-   * Returns a representation of interactive windows shown on the device screen. Mirrors the values
-   * provided to {@link #setWindows(List<AccessibilityWindowInfo>)}. Returns an empty List if not
-   * set.
+   * Returns a representation of interactive windows shown on the device's default display. Mirrors
+   * the values provided to {@link #setWindows(List<AccessibilityWindowInfo>)}. Returns an empty
+   * list if not set.
    */
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected List<AccessibilityWindowInfo> getWindows() {
-    return new ArrayList<>(windows);
+    List<AccessibilityWindowInfo> windowInfos = windows.get(Display.DEFAULT_DISPLAY);
+    if (windowInfos != null) {
+      return new ArrayList<>(windowInfos);
+    } else {
+      return new ArrayList<>();
+    }
+  }
+
+  /**
+   * Returns a representation of interactive windows shown on the device's all displays. An empty
+   * list will be returned for default display and {@code null} will be return for other displays if
+   * they are not set by {@link #setWindowsOnDisplay(int, List)}.
+   */
+  @Implementation(minSdk = R)
+  protected SparseArray<List<AccessibilityWindowInfo>> getWindowsOnAllDisplays() {
+    return cloneWindowOnAllDisplays();
+  }
+
+  private SparseArray<List<AccessibilityWindowInfo>> cloneWindowOnAllDisplays() {
+    SparseArray<List<AccessibilityWindowInfo>> anotherArray = new SparseArray<>();
+    for (int displayId : windows.keySet()) {
+      anotherArray.put(displayId, windows.get(displayId));
+    }
+
+    if (anotherArray.get(Display.DEFAULT_DISPLAY) == null) {
+      anotherArray.put(Display.DEFAULT_DISPLAY, new ArrayList<>());
+    }
+
+    return anotherArray;
   }
 
   @Implementation(minSdk = N)
@@ -130,13 +162,23 @@ public class ShadowAccessibilityService extends ShadowService {
   }
 
   /**
-   * Sets the list of interactive windows shown on the device screen as reported by {@link
-   * #getWindows()}
+   * Sets the list of interactive windows shown on the device's default display as reported by
+   * {@link #getWindows()}
    */
   public void setWindows(List<AccessibilityWindowInfo> windowList) {
-    windows.clear();
+    setWindowsOnDisplay(Display.DEFAULT_DISPLAY, windowList);
+  }
+
+  /**
+   * Sets the list of interactive windows shown on the device's {@code displayId} display. If the
+   * {@code windowList} is null, we will remove the list with given {@code displayId} display as
+   * reported by {@link #getWindowsOnAllDisplays()}.
+   */
+  public void setWindowsOnDisplay(
+      int displayId, @Nullable List<AccessibilityWindowInfo> windowList) {
+    windows.removeAll(displayId);
     if (windowList != null) {
-      windows.addAll(windowList);
+      windows.putAll(displayId, windowList);
     }
   }
 

@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
@@ -8,8 +7,10 @@ import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -22,10 +23,14 @@ import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioManager.OnModeChangedListener;
 import android.media.AudioPlaybackConfiguration;
+import android.media.AudioProfile;
 import android.media.AudioRecordingConfiguration;
+import android.media.AudioSystem;
 import android.media.MediaRecorder.AudioSource;
 import android.media.audiopolicy.AudioPolicy;
+import android.view.KeyEvent;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.google.common.collect.ImmutableList;
@@ -44,9 +49,21 @@ import org.robolectric.shadow.api.Shadow;
 public class ShadowAudioManagerTest {
   private static final float FAULT_TOLERANCE = 0.00001f;
   private final AudioManager.OnAudioFocusChangeListener listener = focusChange -> {};
+  private final LocalOnModeChangedListener modeChangedListener = new LocalOnModeChangedListener();
 
   private Context appContext;
   private AudioManager audioManager;
+
+  // When creating Audio Device Info, we need to pass external device type instead of internal input
+  // device(e.g. AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+  // The mapping between external device type and internal input device is:
+  // http://shortn/_7pV0nML4Cr
+  // Copied from
+  // http://cs/android-internal/frameworks/base/media/java/android/media/AudioSystem.java;l=989
+  private static final int DEVICE_OUT_BLUETOOTH_SCO = 0x10;
+  // Copied from
+  // http://cs/android-internal/frameworks/base/media/java/android/media/AudioSystem.java;l=1000
+  private static final int DEVICE_OUT_BLUETOOTH_A2DP = 0x80;
 
   @Before
   public void setUp() {
@@ -155,6 +172,7 @@ public class ShadowAudioManagerTest {
         case AudioManager.STREAM_RING:
         case AudioManager.STREAM_SYSTEM:
         case AudioManager.STREAM_VOICE_CALL:
+        case AudioManager.STREAM_ACCESSIBILITY:
           assertThat(audioManager.getStreamMaxVolume(stream))
               .isEqualTo(ShadowAudioManager.DEFAULT_MAX_VOLUME);
           break;
@@ -232,6 +250,7 @@ public class ShadowAudioManagerTest {
         case AudioManager.STREAM_RING:
         case AudioManager.STREAM_SYSTEM:
         case AudioManager.STREAM_VOICE_CALL:
+        case AudioManager.STREAM_ACCESSIBILITY:
           assertThat(audioManager.getStreamVolume(stream))
               .isEqualTo(ShadowAudioManager.DEFAULT_MAX_VOLUME);
           break;
@@ -303,6 +322,50 @@ public class ShadowAudioManagerTest {
     assertThat(audioManager.getRingerMode()).isEqualTo(AudioManager.RINGER_MODE_VIBRATE);
   }
 
+  @Config(minSdk = S)
+  @Test
+  public void setModeNormal_listenerAdded_noNotification() {
+    audioManager.addOnModeChangedListener(directExecutor(), modeChangedListener);
+
+    audioManager.setMode(AudioManager.MODE_NORMAL);
+
+    assertThat(modeChangedListener.modes).isEmpty();
+  }
+
+  @Config(minSdk = S)
+  @Test
+  public void setModeInCallAndBackNormal_listenerAdded_notification() {
+    audioManager.addOnModeChangedListener(directExecutor(), modeChangedListener);
+
+    audioManager.setMode(AudioManager.MODE_IN_CALL);
+    audioManager.setMode(AudioManager.MODE_NORMAL);
+
+    assertThat(modeChangedListener.modes)
+        .containsExactly(AudioManager.MODE_IN_CALL, AudioManager.MODE_NORMAL)
+        .inOrder();
+  }
+
+  @Config(minSdk = S)
+  @Test
+  public void addOnModeChangedListener_alreadyInCall_noInitialNotification() {
+    audioManager.setMode(AudioManager.MODE_IN_CALL);
+
+    audioManager.addOnModeChangedListener(directExecutor(), modeChangedListener);
+
+    assertThat(modeChangedListener.modes).isEmpty();
+  }
+
+  @Config(minSdk = S)
+  @Test
+  public void removeOnModeChangedListenerAndSetModeInCall_listenerAdded_noNotification() {
+    audioManager.addOnModeChangedListener(directExecutor(), modeChangedListener);
+
+    audioManager.removeOnModeChangedListener(modeChangedListener);
+    audioManager.setMode(AudioManager.MODE_IN_CALL);
+
+    assertThat(modeChangedListener.modes).isEmpty();
+  }
+
   @Test
   public void getMode_default() {
     assertThat(audioManager.getMode()).isEqualTo(AudioManager.MODE_NORMAL);
@@ -312,6 +375,24 @@ public class ShadowAudioManagerTest {
   public void setMode_shouldSetAudioMode() {
     audioManager.setMode(AudioManager.MODE_RINGTONE);
     assertThat(audioManager.getMode()).isEqualTo(AudioManager.MODE_RINGTONE);
+  }
+
+  @Test
+  public void lockMode_locked_modeRemainsTheSame() {
+    shadowOf(audioManager).lockMode(true);
+
+    audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+
+    assertThat(audioManager.getMode()).isEqualTo(AudioManager.MODE_NORMAL);
+  }
+
+  @Test
+  public void lockMode_notLocked_modeIsSet() {
+    shadowOf(audioManager).lockMode(false);
+
+    audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+
+    assertThat(audioManager.getMode()).isEqualTo(AudioManager.MODE_IN_COMMUNICATION);
   }
 
   @Test
@@ -400,10 +481,53 @@ public class ShadowAudioManagerTest {
   }
 
   @Test
+  @Config(minSdk = TIRAMISU)
+  public void getAudioDevicesForAttributes_returnsEmptyListByDefault() {
+    AudioAttributes movieAttribute =
+        new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build();
+
+    assertThat(audioManager.getAudioDevicesForAttributes(movieAttribute)).isEmpty();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setAudioDevicesForAttributes_updatesAudioDevicesForAttributes() {
+    AudioAttributes movieAttribute =
+        new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build();
+    ImmutableList<AudioDeviceInfo> newDevices =
+        ImmutableList.of(
+            AudioDeviceInfoBuilder.newBuilder()
+                .setType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+                .build());
+
+    shadowOf(audioManager).setAudioDevicesForAttributes(movieAttribute, newDevices);
+
+    assertThat(audioManager.getAudioDevicesForAttributes(movieAttribute)).isEqualTo(newDevices);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void setAudioDevicesForAttributes_returnsEmptyListForOtherAttributes() {
+    AudioAttributes movieAttribute =
+        new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build();
+    AudioAttributes otherAttribute =
+        new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
+    ImmutableList<AudioDeviceInfo> newDevices =
+        ImmutableList.of(
+            AudioDeviceInfoBuilder.newBuilder()
+                .setType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+                .build());
+
+    shadowOf(audioManager).setAudioDevicesForAttributes(movieAttribute, newDevices);
+
+    assertThat(audioManager.getAudioDevicesForAttributes(otherAttribute)).isEmpty();
+  }
+
+  @Test
   @Config(minSdk = M)
   public void registerAudioDeviceCallback_availableDevices_onAudioDevicesAddedCallback()
       throws Exception {
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setInputDevices(Collections.singletonList(device));
 
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
@@ -419,7 +543,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setInputDevices(Collections.singletonList(device));
 
     verifyNoMoreInteractions(callback);
@@ -434,7 +558,7 @@ public class ShadowAudioManagerTest {
     audioManager.unregisterAudioDeviceCallback(callback);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).addInputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
 
     verifyNoMoreInteractions(callback);
@@ -448,7 +572,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).addInputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
 
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {device});
@@ -463,7 +587,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).addInputDevice(device, /* notifyAudioDeviceCallbacks= */ false);
 
     verifyNoMoreInteractions(callback);
@@ -476,7 +600,7 @@ public class ShadowAudioManagerTest {
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setInputDevices(Collections.singletonList(device));
 
     shadowOf(audioManager).addInputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
@@ -492,7 +616,7 @@ public class ShadowAudioManagerTest {
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setInputDevices(Collections.singletonList(device));
 
     shadowOf(audioManager).removeInputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
@@ -508,7 +632,7 @@ public class ShadowAudioManagerTest {
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setInputDevices(Collections.singletonList(device));
 
     shadowOf(audioManager).removeInputDevice(device, /* notifyAudioDeviceCallbacks= */ false);
@@ -524,7 +648,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).removeInputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
 
     verifyNoMoreInteractions(callback);
@@ -537,7 +661,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setOutputDevices(Collections.singletonList(device));
 
     verifyNoMoreInteractions(callback);
@@ -551,7 +675,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).addOutputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
 
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {device});
@@ -566,7 +690,7 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).addOutputDevice(device, /* notifyAudioDeviceCallbacks= */ false);
 
     verifyNoMoreInteractions(callback);
@@ -579,7 +703,7 @@ public class ShadowAudioManagerTest {
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setOutputDevices(Collections.singletonList(device));
 
     shadowOf(audioManager).addOutputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
@@ -595,7 +719,7 @@ public class ShadowAudioManagerTest {
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setOutputDevices(Collections.singletonList(device));
 
     shadowOf(audioManager).removeOutputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
@@ -611,7 +735,7 @@ public class ShadowAudioManagerTest {
     AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).setOutputDevices(Collections.singletonList(device));
 
     shadowOf(audioManager).removeOutputDevice(device, /* notifyAudioDeviceCallbacks= */ false);
@@ -627,8 +751,121 @@ public class ShadowAudioManagerTest {
     audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
     verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
 
-    AudioDeviceInfo device = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
     shadowOf(audioManager).removeOutputDevice(device, /* notifyAudioDeviceCallbacks= */ true);
+
+    verifyNoMoreInteractions(callback);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void setAvailableCommunicationDevices_withCallbackRegistered_noNotificationCallback()
+      throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager).setAvailableCommunicationDevices(Collections.singletonList(device));
+
+    verifyNoMoreInteractions(callback);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      addAvailableCommunicationDevice_withCallbackRegisteredAndNoDevice_deviceAddedAndNotifiesCallback()
+          throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager)
+        .addAvailableCommunicationDevice(device, /* notifyAudioDeviceCallbacks= */ true);
+
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {device});
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      addAvailableCommunicationDeviceNoCallbackNotification_withCallbackRegisteredAndNoDevice_noNotificationCallback()
+          throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager)
+        .addAvailableCommunicationDevice(device, /* notifyAudioDeviceCallbacks= */ false);
+
+    verifyNoMoreInteractions(callback);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      addAvailableCommunicationDevice_withCallbackRegisteredAndDevicePresent_noNotificationCallback()
+          throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager).setAvailableCommunicationDevices(Collections.singletonList(device));
+
+    shadowOf(audioManager)
+        .addAvailableCommunicationDevice(device, /* notifyAudioDeviceCallbacks= */ true);
+
+    verifyNoMoreInteractions(callback);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      removeAvailableCommunicationDevice_withCallbackRegisteredAndDevicePresent_deviceRemovedAndNotifiesCallback()
+          throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager).setAvailableCommunicationDevices(Collections.singletonList(device));
+
+    shadowOf(audioManager)
+        .removeAvailableCommunicationDevice(device, /* notifyAudioDeviceCallbacks= */ true);
+
+    verify(callback).onAudioDevicesRemoved(new AudioDeviceInfo[] {device});
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      removeAvailableCommunicationDeviceNoCallbackNotification_withCallbackRegisteredAndDevicePresent_noNotificationCallback()
+          throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager).setAvailableCommunicationDevices(Collections.singletonList(device));
+
+    shadowOf(audioManager)
+        .removeAvailableCommunicationDevice(device, /* notifyAudioDeviceCallbacks= */ false);
+
+    verifyNoMoreInteractions(callback);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      removeAvailableCommunicationDevice_withCallbackRegisteredAndNoDevice_noNotificationCallback()
+          throws Exception {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+
+    AudioDeviceInfo device = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager)
+        .removeAvailableCommunicationDevice(device, /* notifyAudioDeviceCallbacks= */ true);
 
     verifyNoMoreInteractions(callback);
   }
@@ -636,8 +873,8 @@ public class ShadowAudioManagerTest {
   @Test
   @Config(minSdk = M)
   public void getDevices_criteriaInputs_getsAllInputDevices() throws Exception {
-    AudioDeviceInfo scoDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
-    AudioDeviceInfo a2dpDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP);
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    AudioDeviceInfo a2dpDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_A2DP);
     shadowOf(audioManager).setInputDevices(ImmutableList.of(scoDevice));
     shadowOf(audioManager).setOutputDevices(ImmutableList.of(a2dpDevice));
 
@@ -648,8 +885,8 @@ public class ShadowAudioManagerTest {
   @Test
   @Config(minSdk = M)
   public void getDevices_criteriaOutputs_getsAllOutputDevices() throws Exception {
-    AudioDeviceInfo scoDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
-    AudioDeviceInfo a2dpDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP);
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    AudioDeviceInfo a2dpDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_A2DP);
     shadowOf(audioManager).setInputDevices(ImmutableList.of(scoDevice));
     shadowOf(audioManager).setOutputDevices(ImmutableList.of(a2dpDevice));
 
@@ -660,8 +897,8 @@ public class ShadowAudioManagerTest {
   @Test
   @Config(minSdk = M)
   public void getDevices_criteriaInputsAndOutputs_getsAllDevices() throws Exception {
-    AudioDeviceInfo scoDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
-    AudioDeviceInfo a2dpDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP);
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    AudioDeviceInfo a2dpDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_A2DP);
     shadowOf(audioManager).setInputDevices(ImmutableList.of(scoDevice));
     shadowOf(audioManager).setOutputDevices(ImmutableList.of(a2dpDevice));
 
@@ -672,8 +909,30 @@ public class ShadowAudioManagerTest {
   @Test
   @Config(minSdk = S)
   public void setCommunicationDevice_updatesCommunicationDevice() throws Exception {
-    AudioDeviceInfo scoDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
-    shadowOf(audioManager).setCommunicationDevice(scoDevice);
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    audioManager.setCommunicationDevice(scoDevice);
+
+    assertThat(audioManager.getCommunicationDevice()).isEqualTo(scoDevice);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void lockCommunicationDevice_locked_deviceIsNotSet() throws Exception {
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager).lockCommunicationDevice(true);
+
+    audioManager.setCommunicationDevice(scoDevice);
+
+    assertThat(audioManager.getCommunicationDevice()).isNull();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void lockCommunicationDevice_notLocked_deviceIsSet() throws Exception {
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    shadowOf(audioManager).lockCommunicationDevice(false);
+
+    audioManager.setCommunicationDevice(scoDevice);
 
     assertThat(audioManager.getCommunicationDevice()).isEqualTo(scoDevice);
   }
@@ -681,11 +940,11 @@ public class ShadowAudioManagerTest {
   @Test
   @Config(minSdk = S)
   public void clearCommunicationDevice_clearsCommunicationDevice() throws Exception {
-    AudioDeviceInfo scoDevice = createAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
-    shadowOf(audioManager).setCommunicationDevice(scoDevice);
+    AudioDeviceInfo scoDevice = createAudioDevice(DEVICE_OUT_BLUETOOTH_SCO);
+    audioManager.setCommunicationDevice(scoDevice);
     assertThat(audioManager.getCommunicationDevice()).isEqualTo(scoDevice);
 
-    shadowOf(audioManager).clearCommunicationDevice();
+    audioManager.clearCommunicationDevice();
     assertThat(audioManager.getCommunicationDevice()).isNull();
   }
 
@@ -973,7 +1232,6 @@ public class ShadowAudioManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void generateAudioSessionId_returnsPositiveValues() {
     int audioSessionId = audioManager.generateAudioSessionId();
     int audioSessionId2 = audioManager.generateAudioSessionId();
@@ -983,12 +1241,301 @@ public class ShadowAudioManagerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void generateAudioSessionId_returnsDistinctValues() {
     int audioSessionId = audioManager.generateAudioSessionId();
     int audioSessionId2 = audioManager.generateAudioSessionId();
 
     assertThat(audioSessionId).isNotEqualTo(audioSessionId2);
+  }
+
+  @Test
+  @Config(minSdk = Q)
+  public void isOffloadSupported_withoutSupport() {
+    assertThat(
+            AudioManager.isOffloadedPlaybackSupported(
+                new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_AC3).build(),
+                new AudioAttributes.Builder().build()))
+        .isFalse();
+  }
+
+  @Test
+  @Config(minSdk = Q, maxSdk = R)
+  public void isOffloadSupported_withSetOffloadSupported() {
+    AudioFormat format =
+        new AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_AC3)
+            .setSampleRate(48000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_5POINT1)
+            .build();
+    AudioAttributes attributes = new AudioAttributes.Builder().build();
+    assertThat(AudioManager.isOffloadedPlaybackSupported(format, attributes)).isFalse();
+
+    ShadowAudioSystem.setOffloadSupported(format, attributes, true);
+
+    assertThat(AudioManager.isOffloadedPlaybackSupported(format, attributes)).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = Q, maxSdk = R)
+  public void isOffloadSupported_withSetOffloadSupportedAddedAndRemoved() {
+    AudioFormat format =
+        new AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_AC3)
+            .setSampleRate(48000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_5POINT1)
+            .build();
+    AudioAttributes attributes = new AudioAttributes.Builder().build();
+    ShadowAudioSystem.setOffloadSupported(format, attributes, true);
+    assertThat(AudioManager.isOffloadedPlaybackSupported(format, attributes)).isTrue();
+
+    ShadowAudioSystem.setOffloadSupported(format, attributes, false);
+
+    assertThat(AudioManager.isOffloadedPlaybackSupported(format, attributes)).isFalse();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void isOffloadSupported_withSetOffloadPlaybackSupport() {
+    AudioFormat format =
+        new AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_AC3)
+            .setSampleRate(48000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_5POINT1)
+            .build();
+    AudioAttributes attributes = new AudioAttributes.Builder().build();
+    assertThat(AudioManager.isOffloadedPlaybackSupported(format, attributes)).isFalse();
+
+    ShadowAudioSystem.setOffloadPlaybackSupport(format, attributes, AudioSystem.OFFLOAD_SUPPORTED);
+
+    assertThat(AudioManager.isOffloadedPlaybackSupported(format, attributes)).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void getPlaybackOffloadSupport_withSetOffloadSupport_returnsOffloadSupported() {
+    AudioFormat audioFormat =
+        new AudioFormat.Builder()
+            .setSampleRate(48_000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .setEncoding(AudioFormat.ENCODING_AAC_HE_V2)
+            .build();
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build();
+    ShadowAudioSystem.setOffloadPlaybackSupport(
+        audioFormat, audioAttributes, AudioSystem.OFFLOAD_SUPPORTED);
+
+    int playbackOffloadSupport =
+        AudioManager.getPlaybackOffloadSupport(audioFormat, audioAttributes);
+
+    assertThat(playbackOffloadSupport).isEqualTo(AudioSystem.OFFLOAD_SUPPORTED);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void
+      getPlaybackOffloadSupport_withoutSetDirectPlaybackSupport_returnsOffloadNotSupported() {
+    AudioFormat audioFormat =
+        new AudioFormat.Builder()
+            .setSampleRate(48_000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .setEncoding(AudioFormat.ENCODING_AAC_HE_V2)
+            .build();
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build();
+
+    int playbackOffloadSupport =
+        AudioManager.getPlaybackOffloadSupport(audioFormat, audioAttributes);
+
+    assertThat(playbackOffloadSupport).isEqualTo(AudioSystem.OFFLOAD_NOT_SUPPORTED);
+  }
+
+  @Test
+  @Config(minSdk = S)
+  public void getPlaybackOffloadSupport_withSameAudioAttrUsage_returnsOffloadSupported() {
+    AudioFormat audioFormat =
+        new AudioFormat.Builder()
+            .setSampleRate(48_000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .setEncoding(AudioFormat.ENCODING_AAC_HE_V2)
+            .build();
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build();
+    ShadowAudioSystem.setOffloadPlaybackSupport(
+        audioFormat, audioAttributes, AudioSystem.OFFLOAD_SUPPORTED);
+
+    AudioAttributes audioAttributes2 =
+        new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+            .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build();
+    int playbackOffloadSupport =
+        AudioManager.getPlaybackOffloadSupport(audioFormat, audioAttributes2);
+
+    assertThat(playbackOffloadSupport).isEqualTo(AudioSystem.OFFLOAD_SUPPORTED);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getDirectPlaybackSupport_withSetDirectPlaybackSupport_returnsOffloadSupported() {
+    AudioFormat audioFormat =
+        new AudioFormat.Builder()
+            .setSampleRate(48_000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .setEncoding(AudioFormat.ENCODING_AAC_HE_V2)
+            .build();
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build();
+    ShadowAudioSystem.setDirectPlaybackSupport(
+        audioFormat, audioAttributes, AudioSystem.DIRECT_OFFLOAD_SUPPORTED);
+
+    int playbackOffloadSupport =
+        AudioManager.getDirectPlaybackSupport(audioFormat, audioAttributes);
+
+    assertThat(playbackOffloadSupport).isEqualTo(AudioSystem.DIRECT_OFFLOAD_SUPPORTED);
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getDirectPlaybackSupport_withShadowAudioSystemReset_returnsOffloadNotSupported() {
+    AudioFormat audioFormat =
+        new AudioFormat.Builder()
+            .setSampleRate(48_000)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .setEncoding(AudioFormat.ENCODING_AAC_HE_V2)
+            .build();
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build();
+    ShadowAudioSystem.setDirectPlaybackSupport(
+        audioFormat, audioAttributes, AudioSystem.DIRECT_OFFLOAD_SUPPORTED);
+    ShadowAudioSystem.reset();
+
+    int playbackOffloadSupport =
+        AudioManager.getDirectPlaybackSupport(audioFormat, audioAttributes);
+
+    assertThat(playbackOffloadSupport).isEqualTo(AudioSystem.DIRECT_NOT_SUPPORTED);
+  }
+
+  @Test
+  public void dispatchMediaKeyEvent_recordsEvent() {
+    KeyEvent keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY);
+
+    audioManager.dispatchMediaKeyEvent(keyEvent);
+
+    assertThat(shadowOf(audioManager).getDispatchedMediaKeyEvents()).containsExactly(keyEvent);
+  }
+
+  @Test
+  public void clearDispatchedMediaKeyEvents_clearsDispatchedEvents() {
+    audioManager.dispatchMediaKeyEvent(
+        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
+
+    shadowOf(audioManager).clearDispatchedMediaKeyEvents();
+
+    assertThat(shadowOf(audioManager).getDispatchedMediaKeyEvents()).isEmpty();
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void setHotwordStreamSupportedWithLookbackAudio_updatesIsHotwordStreamSupported() {
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ true))
+        .isFalse();
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ false))
+        .isFalse();
+
+    shadowOf(audioManager)
+        .setHotwordStreamSupported(/* lookbackAudio= */ true, /* isSupported= */ true);
+
+    // isHotwordStreamSupported with lookbackAudio=true is set.
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ true)).isTrue();
+    // isHotwordStreamSupported with lookbackAudio=false is not set.
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ false))
+        .isFalse();
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void setHotwordStreamSupportedWithoutLookbackAudio_updatesIsHotwordStreamSupported() {
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ false))
+        .isFalse();
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ true))
+        .isFalse();
+
+    shadowOf(audioManager)
+        .setHotwordStreamSupported(/* lookbackAudio= */ false, /* isSupported= */ true);
+
+    // isHotwordStreamSupported with lookbackAudio=false is set.
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ false))
+        .isTrue();
+    // isHotwordStreamSupported with lookbackAudio=true is not set.
+    assertThat(shadowOf(audioManager).isHotwordStreamSupported(/* lookbackAudio= */ true))
+        .isFalse();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void getDirectProfilesForAttributes_returnsEmptyListByDefault() {
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+            .build();
+
+    assertThat(shadowOf(audioManager).getDirectProfilesForAttributes(audioAttributes)).isEmpty();
+  }
+
+  @Test
+  @Config(minSdk = TIRAMISU)
+  public void
+      addAndRemoveOutputDeviceWithDirectProfiles_updatesDirectProfilesForAttributes_notifiesCallback() {
+    AudioDeviceCallback callback = mock(AudioDeviceCallback.class);
+    audioManager.registerAudioDeviceCallback(callback, /* handler= */ null);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {}); // initial registration
+    ImmutableList<AudioProfile> expectedProfiles =
+        ImmutableList.of(
+            AudioProfileBuilder.newBuilder()
+                .setFormat(AudioFormat.ENCODING_AC3)
+                .setSamplingRates(new int[] {48_000})
+                .setChannelMasks(new int[] {AudioFormat.CHANNEL_OUT_5POINT1})
+                .setEncapsulationType(AudioProfile.AUDIO_ENCAPSULATION_TYPE_NONE)
+                .build());
+    AudioDeviceInfo outputDevice =
+        AudioDeviceInfoBuilder.newBuilder()
+            .setType(AudioDeviceInfo.TYPE_HDMI)
+            .setProfiles(expectedProfiles)
+            .build();
+    AudioAttributes audioAttributes =
+        new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+            .build();
+
+    shadowOf(audioManager).addOutputDeviceWithDirectProfiles(outputDevice);
+
+    assertThat(shadowOf(audioManager).getDirectProfilesForAttributes(audioAttributes))
+        .isEqualTo(expectedProfiles);
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {outputDevice});
+
+    shadowOf(audioManager).removeOutputDeviceWithDirectProfiles(outputDevice);
+
+    assertThat(shadowOf(audioManager).getDirectProfilesForAttributes(audioAttributes)).isEmpty();
+    verify(callback).onAudioDevicesAdded(new AudioDeviceInfo[] {outputDevice});
   }
 
   private static AudioDeviceInfo createAudioDevice(int type) throws ReflectiveOperationException {
@@ -1003,5 +1550,14 @@ public class ShadowAudioManagerTest {
     typeField.set(port, type);
 
     return info;
+  }
+
+  private static class LocalOnModeChangedListener implements OnModeChangedListener {
+    private List<Integer> modes = new ArrayList<>();
+
+    @Override
+    public void onModeChanged(int mode) {
+      modes.add(mode);
+    }
   }
 }

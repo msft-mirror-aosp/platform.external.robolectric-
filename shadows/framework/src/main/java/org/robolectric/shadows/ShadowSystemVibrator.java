@@ -1,9 +1,6 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.KITKAT_WATCH;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
+
 import static android.os.Build.VERSION_CODES.N_MR1;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.P;
@@ -15,9 +12,9 @@ import android.media.AudioAttributes;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemVibrator;
-import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.vibrator.VibrationEffectSegment;
+import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.Optional;
 import org.robolectric.RuntimeEnvironment;
@@ -25,7 +22,8 @@ import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.util.ReflectionHelpers;
 
-@Implements(value = SystemVibrator.class, isInAndroidSdk = false)
+/** Shadow for {@link SystemVibrator}. */
+@Implements(value = SystemVibrator.class, isInAndroidSdk = false, looseSignatures = true)
 public class ShadowSystemVibrator extends ShadowVibrator {
 
   private final Handler handler = new Handler(Looper.getMainLooper());
@@ -41,33 +39,13 @@ public class ShadowSystemVibrator extends ShadowVibrator {
     return hasAmplitudeControl;
   }
 
-  @Implementation(maxSdk = JELLY_BEAN_MR1)
-  protected void vibrate(long[] pattern, int repeat) {
-    recordVibratePattern(pattern, repeat);
-  }
-
-  @Implementation(minSdk = JELLY_BEAN_MR2, maxSdk = KITKAT_WATCH)
-  protected void vibrate(int owningUid, String owningPackage, long[] pattern, int repeat) {
-    recordVibratePattern(pattern, repeat);
-  }
-
-  @Implementation(minSdk = LOLLIPOP, maxSdk = N_MR1)
+  @Implementation(maxSdk = N_MR1)
   protected void vibrate(
       int uid, String opPkg, long[] pattern, int repeat, AudioAttributes attributes) {
     recordVibratePattern(pattern, repeat);
   }
 
-  @Implementation(maxSdk = JELLY_BEAN_MR1)
-  public void vibrate(long milliseconds) {
-    recordVibrate(milliseconds);
-  }
-
-  @Implementation(minSdk = JELLY_BEAN_MR2, maxSdk = KITKAT_WATCH)
-  public void vibrate(int owningUid, String owningPackage, long milliseconds) {
-    recordVibrate(milliseconds);
-  }
-
-  @Implementation(minSdk = LOLLIPOP, maxSdk = N_MR1)
+  @Implementation(maxSdk = N_MR1)
   protected void vibrate(int uid, String opPkg, long milliseconds, AudioAttributes attributes) {
     recordVibrate(milliseconds);
   }
@@ -133,11 +111,14 @@ public class ShadowSystemVibrator extends ShadowVibrator {
 
   @Implementation(minSdk = S)
   protected void vibrate(
-      int uid,
-      String opPkg,
-      VibrationEffect effect,
-      String reason,
-      VibrationAttributes attributes) {
+      Object uid, Object opPkg, Object effect, Object reason, Object attributes) {
+    Preconditions.checkArgument(uid instanceof Integer);
+    Preconditions.checkArgument(opPkg == null || opPkg instanceof String);
+    // The SystemVibrator#vibrate needs effect NonNull.
+    Preconditions.checkArgument(effect instanceof VibrationEffect);
+    Preconditions.checkArgument(reason == null || reason instanceof String);
+    // The SystemVibrator#vibrate needs attributes NonNull.
+    Preconditions.checkArgument(attributes instanceof android.os.VibrationAttributes);
     if (effect instanceof VibrationEffect.Composed) {
       VibrationEffect.Composed composedEffect = (VibrationEffect.Composed) effect;
       vibrationAttributesFromLastVibration = attributes;

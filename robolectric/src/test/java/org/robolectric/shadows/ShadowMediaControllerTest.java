@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Looper.getMainLooper;
 import static com.google.common.truth.Truth.assertThat;
@@ -30,14 +29,13 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.robolectric.annotation.Config;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 /** Tests for {@link ShadowMediaController}. */
 @RunWith(AndroidJUnit4.class)
-@Config(maxSdk = Q)
 public final class ShadowMediaControllerTest {
 
   private MediaController mediaController;
@@ -48,22 +46,30 @@ public final class ShadowMediaControllerTest {
   public void setUp() {
     Context context = ApplicationProvider.getApplicationContext();
     ISessionController binder = mock(ISessionController.class);
-    MediaSession.Token token =
-        ReflectionHelpers.callConstructor(
-            MediaSession.Token.class, ClassParameter.from(ISessionController.class, binder));
+
+    MediaSession.Token token = null;
+    if (RuntimeEnvironment.getApiLevel() <= Q) {
+      token =
+          ReflectionHelpers.callConstructor(
+              MediaSession.Token.class, ClassParameter.from(ISessionController.class, binder));
+    } else {
+      token =
+          ReflectionHelpers.callConstructor(
+              MediaSession.Token.class,
+              ClassParameter.from(int.class, 0),
+              ClassParameter.from(ISessionController.class, binder));
+    }
     mediaController = new MediaController(context, token);
     shadowMediaController = Shadow.extract(mediaController);
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setPackageName() {
     shadowMediaController.setPackageName(testPackageName);
     assertEquals(testPackageName, mediaController.getPackageName());
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setAndGetPlaybackState() {
     PlaybackState playbackState = createPlaybackState();
     shadowMediaController.setPlaybackState(playbackState);
@@ -71,7 +77,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setAndGetMetadata() {
     MediaMetadata metadata = createMetadata("test");
     shadowMediaController.setMetadata(metadata);
@@ -79,7 +84,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setAndGetPlaybackInfo() {
     PlaybackInfo playbackInfo =
         PlaybackInfoBuilder.newBuilder()
@@ -94,7 +98,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setInvalidRatingType() {
     int ratingType = Rating.RATING_PERCENTAGE + 1;
     IllegalArgumentException thrown =
@@ -110,13 +113,11 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void getDefaultRatingType() {
     assertThat(mediaController.getRatingType()).isEqualTo(Rating.RATING_NONE);
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setAndGetRatingType() {
     int ratingType = Rating.RATING_HEART;
     shadowMediaController.setRatingType(ratingType);
@@ -124,7 +125,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setAndGetSessionActivity() {
     Context context = ApplicationProvider.getApplicationContext();
     Intent intent = new Intent("testIntent");
@@ -134,7 +134,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void setAndGetExtras() {
     String extraKey = "test.extra.key";
     Bundle extras = new Bundle();
@@ -144,7 +143,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void registerAndGetCallback() {
     List<MediaController.Callback> mockCallbacks = new ArrayList<>();
     assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
@@ -161,7 +159,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void registerWithHandlerAndGetCallback() {
     List<MediaController.Callback> mockCallbacks = new ArrayList<>();
     assertEquals(mockCallbacks, shadowMediaController.getCallbacks());
@@ -178,7 +175,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void unregisterCallback() {
     List<MediaController.Callback> mockCallbacks = new ArrayList<>();
     MediaController.Callback mockCallback1 = mock(MediaController.Callback.class);
@@ -199,7 +195,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void executeOnPlaybackStateChanged() {
     ArgumentCaptor<PlaybackState> argument = ArgumentCaptor.forClass(PlaybackState.class);
     MediaController.Callback mockCallback = mock(MediaController.Callback.class);
@@ -216,7 +211,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void executeOnMetadataChanged() {
     ArgumentCaptor<MediaMetadata> argument = ArgumentCaptor.forClass(MediaMetadata.class);
     MediaController.Callback mockCallback = mock(MediaController.Callback.class);
@@ -233,7 +227,6 @@ public final class ShadowMediaControllerTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void executeOnSessionDestroyed() {
     MediaController.Callback mockCallback = mock(MediaController.Callback.class);
 

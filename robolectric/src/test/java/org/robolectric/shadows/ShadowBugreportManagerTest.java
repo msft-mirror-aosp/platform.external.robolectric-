@@ -1,6 +1,7 @@
 package org.robolectric.shadows;
 
 import static android.os.Build.VERSION_CODES.Q;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static org.junit.Assert.assertThrows;
@@ -63,6 +64,18 @@ public final class ShadowBugreportManagerTest {
   }
 
   @Test
+  public void requestBugreport_resetDoesNotCrash() {
+    String title = "title";
+    String description = "description";
+    shadowBugreportManager.requestBugreport(
+        new BugreportParams(BugreportParams.BUGREPORT_MODE_INTERACTIVE), title, description);
+
+    // executeOnFInished() will call resetParams(), which should not crash from referencing any null
+    // values.
+    shadowBugreportManager.executeOnFinished();
+  }
+
+  @Test
   public void startBugreport() throws Exception {
     BugreportCallback callback = mock(BugreportCallback.class);
     shadowBugreportManager.startBugreport(
@@ -74,6 +87,7 @@ public final class ShadowBugreportManagerTest {
     shadowMainLooper().idle();
 
     assertThat(shadowBugreportManager.isBugreportInProgress()).isTrue();
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNotNull();
     verify(callback, never()).onFinished();
     verify(callback, never()).onError(anyInt());
   }
@@ -134,6 +148,38 @@ public final class ShadowBugreportManagerTest {
     assertThat(shadowBugreportManager.isBugreportInProgress()).isFalse();
     verify(callback).onFinished();
     verify(callback, never()).onError(anyInt());
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void retrieveBugreport() throws Exception {
+    BugreportCallback callback = mock(BugreportCallback.class);
+    shadowBugreportManager.retrieveBugreport(
+        "bugreportFile", createWriteFile("bugreport"), directExecutor(), callback);
+    shadowMainLooper().idle();
+
+    assertThat(shadowBugreportManager.isBugreportInProgress()).isTrue();
+    assertThat(shadowBugreportManager.getBugreportFd()).isNotNull();
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNull();
+    verify(callback, never()).onFinished();
+    verify(callback, never()).onError(anyInt());
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void retrieveBugreport_noPermission() throws Exception {
+    BugreportCallback callback = mock(BugreportCallback.class);
+    shadowBugreportManager.setHasPermission(false);
+
+    assertThrows(
+        SecurityException.class,
+        () ->
+            shadowBugreportManager.retrieveBugreport(
+                "bugreportFile", createWriteFile("bugreport"), directExecutor(), callback));
+    shadowMainLooper().idle();
+
+    assertThat(shadowBugreportManager.isBugreportInProgress()).isFalse();
+    verifyNoMoreInteractions(callback);
   }
 
   @Test
@@ -217,6 +263,7 @@ public final class ShadowBugreportManagerTest {
     assertThat(shadowBugreportManager.isBugreportInProgress()).isTrue();
     verify(callback, never()).onFinished();
     verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNotNull();
 
     shadowBugreportManager.executeOnFinished();
     shadowMainLooper().idle();
@@ -224,6 +271,42 @@ public final class ShadowBugreportManagerTest {
     assertThat(shadowBugreportManager.isBugreportInProgress()).isFalse();
     verify(callback).onFinished();
     verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNull();
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void executeOnFinishedWithString() throws Exception {
+    BugreportCallback callback = mock(BugreportCallback.class);
+    shadowBugreportManager.retrieveBugreport(
+        "bugreportFile", createWriteFile("bugreport"), directExecutor(), callback);
+    shadowMainLooper().idle();
+
+    shadowBugreportManager.executeOnFinished("bugreportFile");
+    shadowMainLooper().idle();
+
+    assertThat(shadowBugreportManager.isBugreportInProgress()).isFalse();
+    verify(callback).onFinished("bugreportFile");
+    verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getBugreportFd()).isNull();
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void executeOnFinishedWithString_bugreportInProgress() throws Exception {
+    BugreportCallback callback = mock(BugreportCallback.class);
+    shadowBugreportManager.retrieveBugreport(
+        "bugreportFile", createWriteFile("bugreport"), directExecutor(), callback);
+    shadowMainLooper().idle();
+
+    assertThat(shadowBugreportManager.isBugreportInProgress()).isTrue();
+    verify(callback, never()).onError(anyInt());
+
+    shadowBugreportManager.retrieveBugreport(
+        "bugreportFile", createWriteFile("bugreport"), directExecutor(), callback);
+    shadowMainLooper().idle();
+
+    verify(callback).onError(BugreportCallback.BUGREPORT_ERROR_ANOTHER_REPORT_IN_PROGRESS);
   }
 
   @Test
@@ -244,6 +327,7 @@ public final class ShadowBugreportManagerTest {
     verify(callback, never()).onProgress(anyFloat());
     verify(callback, never()).onFinished();
     verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNotNull();
 
     shadowBugreportManager.executeOnProgress(50.0f);
     shadowMainLooper().idle();
@@ -252,6 +336,7 @@ public final class ShadowBugreportManagerTest {
     verify(callback).onProgress(50.0f);
     verify(callback, never()).onFinished();
     verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNotNull();
 
     shadowBugreportManager.executeOnFinished();
     shadowMainLooper().idle();
@@ -263,6 +348,7 @@ public final class ShadowBugreportManagerTest {
     verify(callback).onFinished();
     verify(callback, never()).onError(anyInt());
     verifyNoMoreInteractions(callback);
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNull();
   }
 
   @Test
@@ -281,6 +367,7 @@ public final class ShadowBugreportManagerTest {
     assertThat(shadowBugreportManager.isBugreportInProgress()).isTrue();
     verify(callback, never()).onFinished();
     verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNotNull();
 
     shadowBugreportManager.executeOnFinished();
     shadowMainLooper().idle();
@@ -288,6 +375,7 @@ public final class ShadowBugreportManagerTest {
     assertThat(shadowBugreportManager.isBugreportInProgress()).isFalse();
     verify(callback).onFinished();
     verify(callback, never()).onError(anyInt());
+    assertThat(shadowBugreportManager.getScreenshotFd()).isNull();
   }
 
   private ParcelFileDescriptor createWriteFile(String fileName) throws IOException {

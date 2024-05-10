@@ -6,10 +6,11 @@ apply plugin: RoboJavaModulePlugin
 apply plugin: DeployedRoboJavaModulePlugin
 
 class GenerateSdksFileTask extends DefaultTask {
-    @OutputFile File outFile
+    @OutputFile
+    File outFile
 
     @TaskAction
-    public void writeProperties() throws Exception {
+    void writeProperties() throws Exception {
         File outDir = outFile.parentFile
         if (!outDir.directory) outDir.mkdirs()
         outFile.withPrintWriter { out ->
@@ -26,30 +27,32 @@ class GenerateSdksFileTask extends DefaultTask {
 }
 
 task('generateSdksFile', type: GenerateSdksFileTask) {
-    outFile = new File(project.rootProject.buildDir, 'sdks.txt')
+    outFile = project.rootProject.layout.buildDirectory.file('sdks.txt').get().asFile
 }
 
-tasks['classes'].dependsOn(generateSdksFile)
+tasks.named("classes").configure { task ->
+    task.dependsOn(generateSdksFile)
+}
 
 dependencies {
     api project(":annotations")
     api project(":shadowapi")
 
-    compileOnly "com.google.code.findbugs:jsr305:3.0.2"
-    api "org.ow2.asm:asm:${asmVersion}"
-    api "org.ow2.asm:asm-commons:${asmVersion}"
-    api "com.google.guava:guava:$guavaJREVersion"
-    api "com.google.code.gson:gson:2.9.1"
-    implementation 'com.google.auto:auto-common:1.1.2'
+    compileOnly libs.findbugs.jsr305
+    api libs.asm
+    api libs.asm.commons
+    api libs.guava
+    api libs.gson
+    implementation libs.auto.common
 
     def toolsJar = Jvm.current().getToolsJar()
     if (toolsJar != null) {
         implementation files(toolsJar)
     }
 
-    testImplementation "javax.annotation:jsr250-api:1.0"
-    testImplementation "junit:junit:${junitVersion}"
-    testImplementation "org.mockito:mockito-core:${mockitoVersion}"
-    testImplementation "com.google.testing.compile:compile-testing:0.19"
-    testImplementation "com.google.truth:truth:${truthVersion}"
+    testImplementation libs.javax.annotation.jsr250.api
+    testImplementation libs.junit4
+    testImplementation libs.mockito
+    testImplementation libs.compile.testing
+    testImplementation libs.truth
 }
