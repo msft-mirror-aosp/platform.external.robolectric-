@@ -99,6 +99,7 @@ public class ShadowCameraManager {
   }
 
   @Implementation(minSdk = V.SDK_INT)
+  @InDevelopment
   protected CameraDevice openCameraDeviceUserAsync(
       String cameraId,
       CameraDevice.StateCallback callback,

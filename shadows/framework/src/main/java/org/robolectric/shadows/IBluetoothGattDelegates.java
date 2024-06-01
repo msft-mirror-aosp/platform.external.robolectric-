@@ -17,7 +17,7 @@ import android.bluetooth.le.PeriodicAdvertisingParameters;
 import android.content.AttributionSource;
 import android.os.IBinder;
 import android.os.RemoteException;
-import com.android.bluetooth.x.com.android.modules.utils.SynchronousResultReceiver;
+import com.android.modules.utils.SynchronousResultReceiver;
 import java.util.Collections;
 import java.util.List;
 import org.robolectric.util.ReflectionHelpers;
