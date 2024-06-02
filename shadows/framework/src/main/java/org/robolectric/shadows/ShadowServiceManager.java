@@ -110,6 +110,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.Resetter;
+import org.robolectric.shadows.ShadowBluetoothAdapter.BluetoothManagerDelegate;
 import org.robolectric.util.ReflectionHelpers;
 
 /** Shadow for {@link ServiceManager}. */
@@ -213,13 +214,17 @@ public class ShadowServiceManager {
     addBinderService(binderServices, Context.WINDOW_SERVICE, IWindowManager.class);
     addBinderService(binderServices, Context.NFC_SERVICE, INfcAdapter.class, BinderProxyType.DEEP);
     addBinderService(binderServices, Context.USER_SERVICE, IUserManager.class);
-    addBinderService(
-        binderServices,
-        BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE,
-        IBluetoothManager.class,
-        BinderProxyType.DELEGATING,
-        IBluetoothManagerDelegates.createDelegate());
-
+    if (RuntimeEnvironment.getApiLevel() < TIRAMISU) {
+      addBinderService(
+          binderServices, BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE, IBluetoothManager.class);
+    } else {
+      addBinderService(
+          binderServices,
+          BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE,
+          IBluetoothManager.class,
+          BinderProxyType.DELEGATING,
+          new BluetoothManagerDelegate());
+    }
     addBinderService(binderServices, Context.APP_OPS_SERVICE, IAppOpsService.class);
     addBinderService(binderServices, "batteryproperties", IBatteryPropertiesRegistrar.class);
 
