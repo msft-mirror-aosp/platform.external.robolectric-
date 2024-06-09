@@ -22,15 +22,6 @@ import org.robolectric.versioning.AndroidVersions.V;
     callNativeMethodsByDefault = true)
 public class ShadowNativeMatrix extends ShadowMatrix {
 
-  /**
-   * The {@link Matrix} static initializer invokes its own native methods. This has to be deferred
-   * starting in Android V.
-   */
-  @Implementation(minSdk = V.SDK_INT)
-  protected static void __staticInitializer__() {
-    // deferred
-  }
-
   @Implementation(maxSdk = N_MR1)
   protected static long native_create(long nSrcOrZero) {
     return nCreate(nSrcOrZero);
