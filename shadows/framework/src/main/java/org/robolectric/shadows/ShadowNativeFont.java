@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import org.robolectric.annotation.InDevelopment;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
@@ -39,7 +38,6 @@ import org.robolectric.versioning.AndroidVersions.U;
     isInAndroidSdk = false,
     callNativeMethodsByDefault = true)
 public class ShadowNativeFont {
-
   @Implementation(minSdk = S, maxSdk = U.SDK_INT)
   protected static long nGetMinikinFontPtr(long font) {
     return FontNatives.nGetMinikinFontPtr(font);
