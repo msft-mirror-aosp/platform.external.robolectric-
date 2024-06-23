@@ -51,13 +51,15 @@ license {
     ],
 }
 
+// Empty library. Should be removed
+java_library {
+    name: "robolectric_android-all-stub_upstream",
+    visibility: ["//visibility:public"],
+}
+
 // build.prop file created by module type defined in soong/robolectric.go
 robolectric_build_props {
     name: "robolectric_build_props",
-    visibility: [
-        ":__subpackages__",
-        "//external/robolectric-shadows:__subpackages__",
-    ],
 }
 
 java_genrule {
@@ -134,7 +136,6 @@ java_library {
     },
     visibility: [
         ":__subpackages__",
-        "//external/robolectric-shadows:__subpackages__",
         "//prebuilts/misc/common/robolectric",
         "//test/robolectric-extensions:__subpackages__",
         "//frameworks/base/packages/SettingsLib:__subpackages__",
@@ -159,11 +160,11 @@ java_library_host {
         "Robolectric_utils_upstream",
         "Robolectric_utils_reflector_upstream",
         "Robolectric_nativeruntime_upstream",
-        "asm-9.2",
+        "asm-9.6",
         "junit",
-        "asm-tree-9.2",
+        "asm-tree-9.6",
         "guava",
-        "asm-commons-9.2",
+        "asm-commons-9.6",
         "bouncycastle-unbundled",
         "conscrypt-unbundled",
         "robolectric-sqlite4java-0.282",
