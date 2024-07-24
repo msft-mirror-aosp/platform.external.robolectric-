@@ -1,9 +1,7 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN;
 import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
-import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageParser;
@@ -19,7 +17,6 @@ import java.util.List;
 import java.util.Set;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implements;
-import org.robolectric.res.Fs;
 import org.robolectric.shadows.ShadowLog.LogItem;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.reflector.Accessor;
@@ -36,26 +33,18 @@ public class ShadowPackageParser {
     PackageParser packageParser = new PackageParser();
 
     try {
-      Package thePackage;
-      if (RuntimeEnvironment.getApiLevel() >= Build.VERSION_CODES.LOLLIPOP) {
-        // TODO(christianw/brettchabot): workaround for NPE from probable bug in Q.
-        // Can be removed when upstream properly handles a null callback
-        // PackageParser#setMinAspectRatio(Package)
-        if (RuntimeEnvironment.getApiLevel() >= Build.VERSION_CODES.Q) {
-          QHelper.setCallback(packageParser);
-        }
-        thePackage = packageParser.parsePackage(apkFile.toFile(), 0);
-      } else { // JB -> KK
-        thePackage =
-            reflector(_PackageParser_.class, packageParser)
-                .parsePackage(apkFile.toFile(), Fs.externalize(apkFile), new DisplayMetrics(), 0);
+      // TODO(christianw/brettchabot): workaround for NPE from probable bug in Q.
+      // Can be removed when upstream properly handles a null callback
+      // PackageParser#setMinAspectRatio(Package)
+      if (RuntimeEnvironment.getApiLevel() >= Build.VERSION_CODES.Q) {
+        QHelper.setCallback(packageParser);
       }
+      Package thePackage = packageParser.parsePackage(apkFile.toFile(), 0);
 
       if (thePackage == null) {
         List<LogItem> logItems = ShadowLog.getLogsForTag("PackageParser");
         if (logItems.isEmpty()) {
-          throw new RuntimeException(
-              "Failed to parse package " + apkFile);
+          throw new RuntimeException("Failed to parse package " + apkFile);
         } else {
           LogItem logItem = logItems.get(0);
           throw new RuntimeException(
@@ -69,9 +58,7 @@ public class ShadowPackageParser {
     }
   }
 
-  /**
-   * Prevents ClassNotFoundError for Callback on pre-26.
-   */
+  /** Prevents ClassNotFoundError for Callback on pre-26. */
   private static class QHelper {
     private static void setCallback(PackageParser packageParser) {
       // TODO(christianw): this should be a CallbackImpl with the ApplicationPackageManager...
@@ -100,16 +87,6 @@ public class ShadowPackageParser {
   @ForType(PackageParser.class)
   interface _PackageParser_ {
 
-    // <= JELLY_BEAN
-    @Static
-    PackageInfo generatePackageInfo(
-        PackageParser.Package p,
-        int[] gids,
-        int flags,
-        long firstInstallTime,
-        long lastUpdateTime,
-        HashSet<String> grantedPermissions);
-
     // <= LOLLIPOP
     @Static
     PackageInfo generatePackageInfo(
@@ -119,8 +96,7 @@ public class ShadowPackageParser {
         long firstInstallTime,
         long lastUpdateTime,
         HashSet<String> grantedPermissions,
-        @WithType("android.content.pm.PackageUserState")
-            Object state);
+        @WithType("android.content.pm.PackageUserState") Object state);
 
     // LOLLIPOP_MR1
     @Static
@@ -131,8 +107,7 @@ public class ShadowPackageParser {
         long firstInstallTime,
         long lastUpdateTime,
         ArraySet<String> grantedPermissions,
-        @WithType("android.content.pm.PackageUserState")
-            Object state);
+        @WithType("android.content.pm.PackageUserState") Object state);
 
     @Static
     PackageInfo generatePackageInfo(
@@ -152,10 +127,7 @@ public class ShadowPackageParser {
         long lastUpdateTime) {
       int apiLevel = RuntimeEnvironment.getApiLevel();
 
-      if (apiLevel <= JELLY_BEAN) {
-        return generatePackageInfo(p, gids, flags, firstInstallTime, lastUpdateTime,
-            new HashSet<>());
-      } else if (apiLevel <= LOLLIPOP) {
+      if (apiLevel == LOLLIPOP) {
         return generatePackageInfo(
             p,
             gids,

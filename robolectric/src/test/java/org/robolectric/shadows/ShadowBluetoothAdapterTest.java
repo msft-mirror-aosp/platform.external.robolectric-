@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.Q;
@@ -9,6 +7,7 @@ import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.S_V2;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
 import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -95,6 +94,26 @@ public class ShadowBluetoothAdapterTest {
   }
 
   @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void canSetAndGetIsLeCodedPhySupported() {
+    assertThat(bluetoothAdapter.isLeCodedPhySupported()).isTrue();
+
+    shadowOf(bluetoothAdapter).setIsLeCodedPhySupported(false);
+
+    assertThat(bluetoothAdapter.isLeCodedPhySupported()).isFalse();
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void canSetAndGetIsLe2MPhySupported() {
+    assertThat(bluetoothAdapter.isLe2MPhySupported()).isTrue();
+
+    shadowOf(bluetoothAdapter).setIsLe2MPhySupported(false);
+
+    assertThat(bluetoothAdapter.isLe2MPhySupported()).isFalse();
+  }
+
+  @Test
   public void testAdapterDefaultsDisabled() {
     assertThat(bluetoothAdapter.isEnabled()).isFalse();
   }
@@ -134,7 +153,6 @@ public class ShadowBluetoothAdapterTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void canGetBluetoothLeScanner() {
     if (RuntimeEnvironment.getApiLevel() < M) {
       // On SDK < 23, bluetooth has to be in STATE_ON in order to get a BluetoothLeScanner.
@@ -145,7 +163,6 @@ public class ShadowBluetoothAdapterTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void canGetBluetoothLeAdvertiser() throws Exception {
     // bluetooth needs to be ON in APIS 21 and 22 for getBluetoothLeAdvertiser to return a
     // non null value
@@ -167,7 +184,6 @@ public class ShadowBluetoothAdapterTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void canGetAndSetMultipleAdvertisementSupport() throws Exception {
     BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
 
@@ -370,7 +386,6 @@ public class ShadowBluetoothAdapterTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR2)
   public void testLeScan() {
     BluetoothAdapter.LeScanCallback callback1 = newLeScanCallback();
     BluetoothAdapter.LeScanCallback callback2 = newLeScanCallback();
@@ -388,7 +403,6 @@ public class ShadowBluetoothAdapterTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR2)
   public void testGetSingleLeScanCallback() {
     BluetoothAdapter.LeScanCallback callback1 = newLeScanCallback();
     BluetoothAdapter.LeScanCallback callback2 = newLeScanCallback();
@@ -430,9 +444,8 @@ public class ShadowBluetoothAdapterTest {
   @Test
   public void secureRfcomm_notNull() throws Exception {
     assertThat(
-            bluetoothAdapter.listenUsingRfcommWithServiceRecord(
-                    "serviceName", UUID.randomUUID()))
-            .isNotNull();
+            bluetoothAdapter.listenUsingRfcommWithServiceRecord("serviceName", UUID.randomUUID()))
+        .isNotNull();
   }
 
   @Test
@@ -842,6 +855,7 @@ public class ShadowBluetoothAdapterTest {
   @Config(minSdk = U.SDK_INT)
   @Test
   public void getProfileProxy_adapterDisabled_serviceListenerNotInvoked() {
+    bluetoothAdapter.disable();
     shadowOf((Application) getApplicationContext()).grantPermissions(permission.BLUETOOTH);
     BluetoothProfile.ServiceListener listener =
         Mockito.mock(BluetoothProfile.ServiceListener.class);
@@ -903,5 +917,37 @@ public class ShadowBluetoothAdapterTest {
     // set Le audio feature to supported.
     shadowOf(adapter).setLeAudioSupported(BluetoothStatusCodes.FEATURE_SUPPORTED);
     assertThat(adapter.isLeAudioSupported()).isEqualTo(BluetoothStatusCodes.FEATURE_SUPPORTED);
+  }
+
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  @Test
+  public void canGetAndSetDistanceMeasurementSupport() {
+    // By default distance measurement is not supported
+    assertThat(bluetoothAdapter.isDistanceMeasurementSupported())
+        .isEqualTo(BluetoothStatusCodes.FEATURE_NOT_SUPPORTED);
+
+    // set distance measurement feature to supported.
+    shadowOf(bluetoothAdapter)
+        .setDistanceMeasurementSupported(BluetoothStatusCodes.FEATURE_SUPPORTED);
+
+    assertThat(bluetoothAdapter.isDistanceMeasurementSupported())
+        .isEqualTo(BluetoothStatusCodes.FEATURE_SUPPORTED);
+  }
+
+  @Test
+  @SuppressWarnings("JdkImmutableCollections")
+  public void getBondedDevices_whenSeededWithSet_returnsThatSet() {
+    BluetoothDevice device1 = bluetoothAdapter.getRemoteDevice("AB:CD:EF:12:34:56");
+    BluetoothDevice device2 = bluetoothAdapter.getRemoteDevice("12:34:56:AB:CD:EF");
+    shadowOf(bluetoothAdapter).setBondedDevices(Set.of(device1, device2));
+
+    assertThat(bluetoothAdapter.getBondedDevices()).containsExactly(device1, device2);
+  }
+
+  @Test
+  public void getBondedDevices_whenSeededWithNull_returnsNull() {
+    shadowOf(bluetoothAdapter).setBondedDevices(null);
+
+    assertThat(bluetoothAdapter.getBondedDevices()).isNull();
   }
 }

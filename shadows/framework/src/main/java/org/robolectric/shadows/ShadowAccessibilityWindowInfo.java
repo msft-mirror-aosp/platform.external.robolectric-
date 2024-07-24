@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.Q;
@@ -25,7 +24,7 @@ import org.robolectric.util.reflector.ForType;
  * Shadow of {@link android.view.accessibility.AccessibilityWindowInfo} that allows a test to set
  * properties that are locked in the original class.
  */
-@Implements(value = AccessibilityWindowInfo.class, minSdk = LOLLIPOP)
+@Implements(value = AccessibilityWindowInfo.class)
 public class ShadowAccessibilityWindowInfo {
 
   private static final Map<StrictEqualityWindowWrapper, StackTraceElement[]> obtainedInstances =
@@ -104,20 +103,18 @@ public class ShadowAccessibilityWindowInfo {
   }
 
   /**
-   * Clear list of obtained instance objects. {@code areThereUnrecycledWindows} will always
-   * return false if called immediately afterwards.
+   * Clear list of obtained instance objects. {@code areThereUnrecycledWindows} will always return
+   * false if called immediately afterwards.
    */
   public static void resetObtainedInstances() {
     obtainedInstances.clear();
   }
 
   /**
-   * Check for leaked objects that were {@code obtain}ed but never
-   * {@code recycle}d.
+   * Check for leaked objects that were {@code obtain}ed but never {@code recycle}d.
    *
-   * @param printUnrecycledWindowsToSystemErr - if true, stack traces of calls
-   *        to {@code obtain} that lack matching calls to {@code recycle} are
-   *        dumped to System.err.
+   * @param printUnrecycledWindowsToSystemErr - if true, stack traces of calls to {@code obtain}
+   *     that lack matching calls to {@code recycle} are dumped to System.err.
    * @return {@code true} if there are unrecycled windows
    */
   public static boolean areThereUnrecycledWindows(boolean printUnrecycledWindowsToSystemErr) {
@@ -333,13 +330,12 @@ public class ShadowAccessibilityWindowInfo {
     }
 
     children.add(child);
-    ((ShadowAccessibilityWindowInfo) Shadow.extract(child)).parent =
-        mRealAccessibilityWindowInfo;
+    ((ShadowAccessibilityWindowInfo) Shadow.extract(child)).parent = mRealAccessibilityWindowInfo;
   }
 
   /**
-   * Private class to keep different windows referring to the same window straight
-   * in the mObtainedInstances map.
+   * Private class to keep different windows referring to the same window straight in the
+   * mObtainedInstances map.
    */
   private static class StrictEqualityWindowWrapper {
     public final AccessibilityWindowInfo mInfo;

@@ -40,7 +40,6 @@ public class ShadowMap {
     final Map<String, String> shadowPickerMap = new HashMap<>();
 
     // These are sorted in descending order (higher priority providers are first).
-    Logger.debug("Shadow providers: " +  sortedProviders);
     for (ShadowProvider provider : sortedProviders) {
       Logger.debug("Shadow provider: " + provider.getClass().getName());
       for (Map.Entry<String, String> entry : provider.getShadows()) {
@@ -70,20 +69,22 @@ public class ShadowMap {
   }
 
   public boolean hasShadowPicker(MutableClass mutableClass) {
-    return shadowPickers.containsKey(mutableClass.getName().replace('$', '.'));
+    return shadowPickers.containsKey(mutableClass.getName());
   }
 
   public ShadowInfo getShadowInfo(Class<?> clazz, ShadowMatcher shadowMatcher) {
     String instrumentedClassName = clazz.getName();
 
     ShadowInfo shadowInfo = overriddenShadows.get(instrumentedClassName);
-    if (shadowInfo == null) {
-      shadowInfo = checkShadowPickers(instrumentedClassName, clazz);
-    } else if (shadowInfo.hasShadowPicker()) {
-      shadowInfo = pickShadow(instrumentedClassName, clazz, shadowInfo);
+    String shadowPickerClassName = null;
+    if (shadowInfo != null && shadowInfo.hasShadowPicker()) {
+      shadowPickerClassName = shadowInfo.getShadowPickerClass().getName();
+    } else if (shadowInfo == null) {
+      shadowPickerClassName = shadowPickers.get(instrumentedClassName);
     }
-
-    if (shadowInfo == null && clazz.getClassLoader() != null) {
+    if (shadowPickerClassName != null) {
+      shadowInfo = pickShadow(instrumentedClassName, clazz, shadowPickerClassName);
+    } else if (shadowInfo == null) {
       try {
         final ImmutableList<String> shadowNames = defaultShadows.get(clazz.getCanonicalName());
         for (String shadowName : shadowNames) {
@@ -103,22 +104,10 @@ public class ShadowMap {
         return null;
       }
     }
-
     if (shadowInfo != null && !shadowMatcher.matches(shadowInfo)) {
       return null;
     }
-
     return shadowInfo;
-  }
-
-  // todo: some caching would probably be nice here...
-  private ShadowInfo checkShadowPickers(String instrumentedClassName, Class<?> clazz) {
-    String shadowPickerClassName = shadowPickers.get(instrumentedClassName);
-    if (shadowPickerClassName == null) {
-      return null;
-    }
-
-    return pickShadow(instrumentedClassName, clazz, shadowPickerClassName);
   }
 
   private ShadowInfo pickShadow(
@@ -152,11 +141,6 @@ public class ShadowMap {
         | InstantiationException e) {
       throw new RuntimeException("Failed to resolve shadow picker for " + instrumentedClassName, e);
     }
-  }
-
-  private ShadowInfo pickShadow(
-      String instrumentedClassName, Class<?> clazz, ShadowInfo shadowInfo) {
-    return pickShadow(instrumentedClassName, clazz, shadowInfo.getShadowPickerClass().getName());
   }
 
   public static ShadowInfo obtainShadowInfo(Class<?> clazz) {
@@ -265,10 +249,18 @@ public class ShadowMap {
         String realClassName,
         String shadowClassName,
         boolean callThroughByDefault,
+        boolean callNativeMethodsByDefault,
         boolean looseSignatures) {
       addShadowInfo(
           new ShadowInfo(
-              realClassName, shadowClassName, callThroughByDefault, looseSignatures, -1, -1, null));
+              realClassName,
+              shadowClassName,
+              callThroughByDefault,
+              callNativeMethodsByDefault,
+              looseSignatures,
+              -1,
+              -1,
+              null));
       return this;
     }
 

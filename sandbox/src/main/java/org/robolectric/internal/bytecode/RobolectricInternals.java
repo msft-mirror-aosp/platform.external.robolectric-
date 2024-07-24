@@ -21,19 +21,14 @@ public class RobolectricInternals {
     classHandler.classInitializing(clazz);
   }
 
-  @SuppressWarnings("UnusedDeclaration")
-  public static Object initializing(Object instance) throws Exception {
-    return classHandler.initializing(instance);
-  }
-
   public static MethodHandle getShadowCreator(Class<?> caller) {
     return classHandler.getShadowCreator(caller);
   }
 
   public static MethodHandle findShadowMethodHandle(
-      Class<?> theClass, String name, MethodType methodType, boolean isStatic)
+      Class<?> theClass, String name, MethodType methodType, boolean isStatic, boolean isNative)
       throws IllegalAccessException {
-    return classHandler.findShadowMethodHandle(theClass, name, methodType, isStatic);
+    return classHandler.findShadowMethodHandle(theClass, name, methodType, isStatic, isNative);
   }
 
   @SuppressWarnings("UnusedDeclaration")

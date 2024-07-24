@@ -2,7 +2,6 @@ package org.robolectric.shadows;
 
 import static android.content.pm.PackageManager.PERMISSION_DENIED;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
-import static android.os.Build.VERSION_CODES.KITKAT;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.P;
 import static com.google.common.truth.Truth.assertThat;
@@ -187,7 +186,7 @@ public class ShadowContextWrapperTest {
         /* broadcastPermission= */ null,
         /* scheduler= */ null);
 
-    contextWrapper.sendBroadcast(new Intent("foo"), /*receiverPermission=*/ "larryPermission");
+    contextWrapper.sendBroadcast(new Intent("foo"), /* receiverPermission= */ "larryPermission");
 
     asyncAssertThat(transcript).containsExactly("Larry notified of foo");
   }
@@ -207,7 +206,7 @@ public class ShadowContextWrapperTest {
         /* scheduler= */ null);
 
     Context broadcaster = contextWithPermission("broadcasterPackage", "larryPermission");
-    broadcaster.sendBroadcast(new Intent("foo"), /*receiverPermission=*/ null);
+    broadcaster.sendBroadcast(new Intent("foo"), /* receiverPermission= */ null);
 
     asyncAssertThat(transcript).containsExactly("Larry notified of foo");
   }
@@ -317,7 +316,6 @@ public class ShadowContextWrapperTest {
   }
 
   @Test
-  @Config(minSdk = KITKAT)
   public void sendOrderedBroadcastAsUser_shouldReturnValues() throws Exception {
     String action = "test";
 

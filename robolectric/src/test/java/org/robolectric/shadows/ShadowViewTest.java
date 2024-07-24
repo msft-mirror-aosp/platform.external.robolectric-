@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -62,7 +60,6 @@ import org.robolectric.R;
 import org.robolectric.Robolectric;
 import org.robolectric.android.DeviceConfig;
 import org.robolectric.android.controller.ActivityController;
-import org.robolectric.annotation.Config;
 import org.robolectric.util.TestRunnable;
 
 @RunWith(AndroidJUnit4.class)
@@ -146,12 +143,13 @@ public class ShadowViewTest {
   public void shouldFocus() throws Exception {
     final List<String> transcript = new ArrayList<>();
 
-    view.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-      @Override
-      public void onFocusChange(View v, boolean hasFocus) {
-        transcript.add(hasFocus ? "Gained focus" : "Lost focus");
-      }
-    });
+    view.setOnFocusChangeListener(
+        new View.OnFocusChangeListener() {
+          @Override
+          public void onFocusChange(View v, boolean hasFocus) {
+            transcript.add(hasFocus ? "Gained focus" : "Lost focus");
+          }
+        });
 
     assertFalse(view.isFocused());
     assertFalse(view.hasFocus());
@@ -359,10 +357,8 @@ public class ShadowViewTest {
 
   @Test
   public void shouldAddOnClickListenerFromAttribute() throws Exception {
-    AttributeSet attrs = Robolectric.buildAttributeSet()
-        .addAttribute(android.R.attr.onClick, "clickMe")
-        .build()
-        ;
+    AttributeSet attrs =
+        Robolectric.buildAttributeSet().addAttribute(android.R.attr.onClick, "clickMe").build();
 
     view = new View(context, attrs);
     assertNotNull(shadowOf(view).getOnClickListener());
@@ -372,9 +368,8 @@ public class ShadowViewTest {
   public void shouldCallOnClickWithAttribute() throws Exception {
     MyActivity myActivity = buildActivity(MyActivity.class).create().get();
 
-    AttributeSet attrs = Robolectric.buildAttributeSet()
-        .addAttribute(android.R.attr.onClick, "clickMe")
-        .build();
+    AttributeSet attrs =
+        Robolectric.buildAttributeSet().addAttribute(android.R.attr.onClick, "clickMe").build();
 
     view = new View(myActivity, attrs);
     view.performClick();
@@ -385,9 +380,8 @@ public class ShadowViewTest {
   public void shouldThrowExceptionWithBadMethodName() throws Exception {
     MyActivity myActivity = buildActivity(MyActivity.class).create().get();
 
-    AttributeSet attrs = Robolectric.buildAttributeSet()
-        .addAttribute(android.R.attr.onClick, "clickYou")
-        .build();
+    AttributeSet attrs =
+        Robolectric.buildAttributeSet().addAttribute(android.R.attr.onClick, "clickYou").build();
 
     view = new View(myActivity, attrs);
     view.performClick();
@@ -426,8 +420,14 @@ public class ShadowViewTest {
 
   @Test
   public void scrollTo_shouldStoreTheScrolledCoordinates() throws Exception {
-    view.scrollTo(1, 2);
-    assertThat(shadowOf(view).scrollToCoordinates).isEqualTo(new Point(1, 2));
+    // This test depends on broken scrolling behavior.
+    System.setProperty("robolectric.useRealScrolling", "false");
+    try {
+      view.scrollTo(1, 2);
+      assertThat(shadowOf(view).scrollToCoordinates).isEqualTo(new Point(1, 2));
+    } finally {
+      System.clearProperty("robolectric.useRealScrolling");
+    }
   }
 
   @Test
@@ -440,12 +440,18 @@ public class ShadowViewTest {
 
   @Test
   public void scrollBy_shouldStoreTheScrolledCoordinates() throws Exception {
-    view.scrollTo(4, 5);
-    view.scrollBy(10, 20);
-    assertThat(shadowOf(view).scrollToCoordinates).isEqualTo(new Point(14, 25));
+    // This test depends on broken scrolling behavior.
+    System.setProperty("robolectric.useRealScrolling", "false");
+    try {
+      view.scrollTo(4, 5);
+      view.scrollBy(10, 20);
+      assertThat(shadowOf(view).scrollToCoordinates).isEqualTo(new Point(14, 25));
 
-    assertThat(view.getScrollX()).isEqualTo(14);
-    assertThat(view.getScrollY()).isEqualTo(25);
+      assertThat(view.getScrollX()).isEqualTo(14);
+      assertThat(view.getScrollY()).isEqualTo(25);
+    } finally {
+      System.clearProperty("robolectric.useRealScrolling");
+    }
   }
 
   @Test
@@ -474,12 +480,14 @@ public class ShadowViewTest {
   @Test
   public void dispatchTouchEvent_listensToFalseFromListener() throws Exception {
     final AtomicBoolean called = new AtomicBoolean(false);
-    view.setOnTouchListener(new View.OnTouchListener() {
-      @Override
-      public boolean onTouch(View view, MotionEvent motionEvent) {
-        called.set(true); return false;
-      }
-    });
+    view.setOnTouchListener(
+        new View.OnTouchListener() {
+          @Override
+          public boolean onTouch(View view, MotionEvent motionEvent) {
+            called.set(true);
+            return false;
+          }
+        });
     MotionEvent event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 12f, 34f, 0);
     view.dispatchTouchEvent(event);
     assertThat(shadowOf(view).getLastTouchEvent()).isSameInstanceAs(event);
@@ -545,7 +553,8 @@ public class ShadowViewTest {
     assertThat(view1.getMeasuredHeight()).isEqualTo(0);
     assertThat(view1.getMeasuredWidth()).isEqualTo(0);
 
-    view1.measure(MeasureSpec.makeMeasureSpec(150, MeasureSpec.AT_MOST),
+    view1.measure(
+        MeasureSpec.makeMeasureSpec(150, MeasureSpec.AT_MOST),
         MeasureSpec.makeMeasureSpec(300, MeasureSpec.AT_MOST));
 
     assertThat(view1.getHeight()).isEqualTo(0);
@@ -564,8 +573,9 @@ public class ShadowViewTest {
     assertThat(view2.getMeasuredWidth()).isEqualTo(0);
     assertThat(view2.getMeasuredHeight()).isEqualTo(0);
 
-    view2.measure(MeasureSpec.makeMeasureSpec(200, MeasureSpec.AT_MOST),
-    MeasureSpec.makeMeasureSpec(50, MeasureSpec.AT_MOST));
+    view2.measure(
+        MeasureSpec.makeMeasureSpec(200, MeasureSpec.AT_MOST),
+        MeasureSpec.makeMeasureSpec(50, MeasureSpec.AT_MOST));
 
     assertThat(view2.getWidth()).isEqualTo(0);
     assertThat(view2.getHeight()).isEqualTo(0);
@@ -623,12 +633,13 @@ public class ShadowViewTest {
     assertThat(view.isClickable()).isTrue();
     view.setClickable(false);
     assertThat(view.isClickable()).isFalse();
-    view.setOnClickListener(new OnClickListener() {
-      @Override
-      public void onClick(View v) {
-        ;
-      }
-    });
+    view.setOnClickListener(
+        new OnClickListener() {
+          @Override
+          public void onClick(View v) {
+            ;
+          }
+        });
     assertThat(view.isClickable()).isTrue();
   }
 
@@ -639,12 +650,13 @@ public class ShadowViewTest {
     assertThat(view.isLongClickable()).isTrue();
     view.setLongClickable(false);
     assertThat(view.isLongClickable()).isFalse();
-    view.setOnLongClickListener(new OnLongClickListener() {
-      @Override
-      public boolean onLongClick(View v) {
-        return false;
-      }
-    });
+    view.setOnLongClickListener(
+        new OnLongClickListener() {
+          @Override
+          public boolean onLongClick(View v) {
+            return false;
+          }
+        });
     assertThat(view.isLongClickable()).isTrue();
   }
 
@@ -667,7 +679,6 @@ public class ShadowViewTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void cameraDistance() {
     view.setCameraDistance(100f);
     assertThat(view.getCameraDistance()).isEqualTo(100f);
@@ -700,7 +711,6 @@ public class ShadowViewTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void elevation() {
     view.setElevation(10f);
     assertThat(view.getElevation()).isEqualTo(10f);
@@ -719,14 +729,12 @@ public class ShadowViewTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void translationZ() {
     view.setTranslationZ(10f);
     assertThat(view.getTranslationZ()).isEqualTo(10f);
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void clipToOutline() {
     view.setClipToOutline(true);
     assertThat(view.getClipToOutline()).isTrue();
@@ -736,7 +744,8 @@ public class ShadowViewTest {
   public void performHapticFeedback_shouldSetLastPerformedHapticFeedback() throws Exception {
     assertThat(shadowOf(view).lastHapticFeedbackPerformed()).isEqualTo(-1);
     view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-    assertThat(shadowOf(view).lastHapticFeedbackPerformed()).isEqualTo(HapticFeedbackConstants.LONG_PRESS);
+    assertThat(shadowOf(view).lastHapticFeedbackPerformed())
+        .isEqualTo(HapticFeedbackConstants.LONG_PRESS);
   }
 
   @Test
@@ -775,8 +784,7 @@ public class ShadowViewTest {
     assertThat(view.getLayerType()).isEqualTo(View.LAYER_TYPE_SOFTWARE);
   }
 
-  private static class TestAnimation extends Animation {
-  }
+  private static class TestAnimation extends Animation {}
 
   private static class TouchableView extends View {
     MotionEvent event;
@@ -834,7 +842,8 @@ public class ShadowViewTest {
       super.onLayout(changed, l, t, r, b);
     }
 
-    @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
       setMeasuredDimension(minWidth, minHeight);
     }
   }
@@ -866,7 +875,7 @@ public class ShadowViewTest {
     assertFalse(shadowOf(temporaryChild).isAttachedToWindow());
   }
 
-  @Test @Config(minSdk = JELLY_BEAN_MR2)
+  @Test
   public void getWindowId_shouldReturnValidObjectWhenAttached() throws Exception {
     MyView parent = new MyView("parent", transcript);
     MyView child = new MyView("child", transcript);
@@ -911,13 +920,15 @@ public class ShadowViewTest {
   @Test
   public void capturesOnSystemUiVisibilityChangeListener() throws Exception {
     TestView testView = new TestView(buildActivity(Activity.class).create().get());
-    View.OnSystemUiVisibilityChangeListener changeListener = new View.OnSystemUiVisibilityChangeListener() {
-      @Override
-      public void onSystemUiVisibilityChange(int i) { }
-    };
+    View.OnSystemUiVisibilityChangeListener changeListener =
+        new View.OnSystemUiVisibilityChangeListener() {
+          @Override
+          public void onSystemUiVisibilityChange(int i) {}
+        };
     testView.setOnSystemUiVisibilityChangeListener(changeListener);
 
-    assertThat(changeListener).isEqualTo(shadowOf(testView).getOnSystemUiVisibilityChangeListener());
+    assertThat(changeListener)
+        .isEqualTo(shadowOf(testView).getOnSystemUiVisibilityChangeListener());
   }
 
   @Test
@@ -925,10 +936,12 @@ public class ShadowViewTest {
     TestView testView = new TestView(buildActivity(Activity.class).create().get());
     assertThat(shadowOf(testView).getOnCreateContextMenuListener()).isNull();
 
-    View.OnCreateContextMenuListener createListener = new View.OnCreateContextMenuListener() {
-      @Override
-      public void onCreateContextMenu(ContextMenu contextMenu, View view, ContextMenu.ContextMenuInfo contextMenuInfo) {}
-    };
+    View.OnCreateContextMenuListener createListener =
+        new View.OnCreateContextMenuListener() {
+          @Override
+          public void onCreateContextMenu(
+              ContextMenu contextMenu, View view, ContextMenu.ContextMenuInfo contextMenuInfo) {}
+        };
 
     testView.setOnCreateContextMenuListener(createListener);
     assertThat(shadowOf(testView).getOnCreateContextMenuListener()).isEqualTo(createListener);
@@ -980,30 +993,23 @@ public class ShadowViewTest {
   public void setsGlobalVisibleRect() {
     Rect globalVisibleRect = new Rect();
     shadowOf(view).setGlobalVisibleRect(new Rect());
-    assertThat(view.getGlobalVisibleRect(globalVisibleRect))
-        .isFalse();
-    assertThat(globalVisibleRect.isEmpty())
-        .isTrue();
-    assertThat(view.getGlobalVisibleRect(globalVisibleRect, new Point(1, 1)))
-        .isFalse();
-    assertThat(globalVisibleRect.isEmpty())
-        .isTrue();
+    assertThat(view.getGlobalVisibleRect(globalVisibleRect)).isFalse();
+    assertThat(globalVisibleRect.isEmpty()).isTrue();
+    assertThat(view.getGlobalVisibleRect(globalVisibleRect, new Point(1, 1))).isFalse();
+    assertThat(globalVisibleRect.isEmpty()).isTrue();
 
     shadowOf(view).setGlobalVisibleRect(new Rect(1, 2, 3, 4));
-    assertThat(view.getGlobalVisibleRect(globalVisibleRect))
-        .isTrue();
-    assertThat(globalVisibleRect)
-        .isEqualTo(new Rect(1, 2, 3, 4));
-    assertThat(view.getGlobalVisibleRect(globalVisibleRect, new Point(1, 1)))
-        .isTrue();
-    assertThat(globalVisibleRect)
-        .isEqualTo(new Rect(0, 1, 2, 3));
+    assertThat(view.getGlobalVisibleRect(globalVisibleRect)).isTrue();
+    assertThat(globalVisibleRect).isEqualTo(new Rect(1, 2, 3, 4));
+    assertThat(view.getGlobalVisibleRect(globalVisibleRect, new Point(1, 1))).isTrue();
+    assertThat(globalVisibleRect).isEqualTo(new Rect(0, 1, 2, 3));
   }
 
   @Test
   public void usesDefaultGlobalVisibleRect() {
 
-    final ActivityController<Activity> activityController = Robolectric.buildActivity(Activity.class);
+    final ActivityController<Activity> activityController =
+        Robolectric.buildActivity(Activity.class);
     final Activity activity = activityController.get();
     TextView fooView = new TextView(activity);
     activity.setContentView(
@@ -1015,8 +1021,12 @@ public class ShadowViewTest {
     Rect globalVisibleRect = new Rect();
     assertThat(fooView.getGlobalVisibleRect(globalVisibleRect)).isTrue();
     assertThat(globalVisibleRect)
-        .isEqualTo(new Rect(0, 25,
-            DeviceConfig.DEFAULT_SCREEN_SIZE.width, DeviceConfig.DEFAULT_SCREEN_SIZE.height));
+        .isEqualTo(
+            new Rect(
+                0,
+                25,
+                DeviceConfig.DEFAULT_SCREEN_SIZE.width,
+                DeviceConfig.DEFAULT_SCREEN_SIZE.height));
   }
 
   @Test
@@ -1155,12 +1165,14 @@ public class ShadowViewTest {
       this.transcript = transcript;
     }
 
-    @Override protected void onAttachedToWindow() {
+    @Override
+    protected void onAttachedToWindow() {
       transcript.add(name + " attached");
       super.onAttachedToWindow();
     }
 
-    @Override protected void onDetachedFromWindow() {
+    @Override
+    protected void onDetachedFromWindow() {
       transcript.add(name + " detached");
       super.onDetachedFromWindow();
     }

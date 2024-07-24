@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT;
 import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
@@ -87,7 +86,9 @@ public class ShadowEnvironmentTest {
   public void getExternalStoragePublicDirectory_shouldReturnDirectory() {
     final File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES);
     assertThat(path.exists()).isTrue();
-    assertThat(path).isEqualTo(new File(ShadowEnvironment.EXTERNAL_FILES_DIR.toFile(), Environment.DIRECTORY_MOVIES));
+    assertThat(path)
+        .isEqualTo(
+            new File(ShadowEnvironment.EXTERNAL_FILES_DIR.toFile(), Environment.DIRECTORY_MOVIES));
   }
 
   @Test
@@ -152,7 +153,6 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void isExternalStorageRemovable_shouldReturnSavedValue() {
     final File file = new File("/mnt/media/file");
     assertThat(Environment.isExternalStorageRemovable(file)).isFalse();
@@ -161,7 +161,6 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void isExternalStorageEmulated_shouldReturnSavedValue() {
     final File file = new File("/mnt/media/file");
     assertThat(Environment.isExternalStorageEmulated(file)).isFalse();
@@ -179,7 +178,6 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void storageIsLazy() {
     assertNull(ShadowEnvironment.EXTERNAL_CACHE_DIR);
     assertNull(ShadowEnvironment.EXTERNAL_FILES_DIR);
@@ -192,7 +190,6 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void reset_shouldClearRemovableFiles() {
     final File file = new File("foo");
     ShadowEnvironment.setExternalStorageRemovable(file, true);
@@ -203,7 +200,6 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void reset_shouldClearEmulatedFiles() {
     final File file = new File("foo");
     ShadowEnvironment.setExternalStorageEmulated(file, true);
@@ -214,7 +210,6 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void reset_shouldResetExternalStorageState() {
     ShadowEnvironment.setExternalStorageState(Environment.MEDIA_UNKNOWN);
     ShadowEnvironment.reset();
@@ -241,7 +236,6 @@ public class ShadowEnvironmentTest {
   // TODO: failing test
   @Ignore
   @Test
-  @Config(minSdk = KITKAT)
   public void getExternalFilesDirs() throws Exception {
     ShadowEnvironment.addExternalDir("external_dir_1");
     ShadowEnvironment.addExternalDir("external_dir_2");
@@ -261,7 +255,7 @@ public class ShadowEnvironmentTest {
   }
 
   @Test
-  @Config(minSdk = KITKAT, maxSdk = LOLLIPOP)
+  @Config(sdk = LOLLIPOP)
   public void getExternalStorageStatePreLollipopMR1() {
     File storageDir1 = ShadowEnvironment.addExternalDir("dir1");
     File storageDir2 = ShadowEnvironment.addExternalDir("dir2");
@@ -269,10 +263,8 @@ public class ShadowEnvironmentTest {
     ShadowEnvironment.setExternalStorageState(storageDir2, Environment.MEDIA_REMOVED);
     ShadowEnvironment.setExternalStorageState("blah");
 
-    assertThat(ShadowEnvironment.getStorageState(storageDir1))
-        .isEqualTo(Environment.MEDIA_MOUNTED);
-    assertThat(ShadowEnvironment.getStorageState(storageDir2))
-        .isEqualTo(Environment.MEDIA_REMOVED);
+    assertThat(ShadowEnvironment.getStorageState(storageDir1)).isEqualTo(Environment.MEDIA_MOUNTED);
+    assertThat(ShadowEnvironment.getStorageState(storageDir2)).isEqualTo(Environment.MEDIA_REMOVED);
     assertThat(ShadowEnvironment.getStorageState(new File(storageDir1, "subpath")))
         .isEqualTo(Environment.MEDIA_MOUNTED);
     assertThat(ShadowEnvironment.getExternalStorageState()).isEqualTo("blah");
@@ -289,12 +281,10 @@ public class ShadowEnvironmentTest {
 
     assertThat(ShadowEnvironment.getExternalStorageState(storageDir1))
         .isEqualTo(Environment.MEDIA_MOUNTED);
-    assertThat(ShadowEnvironment.getStorageState(storageDir1))
-        .isEqualTo(Environment.MEDIA_MOUNTED);
+    assertThat(ShadowEnvironment.getStorageState(storageDir1)).isEqualTo(Environment.MEDIA_MOUNTED);
     assertThat(ShadowEnvironment.getExternalStorageState(storageDir2))
         .isEqualTo(Environment.MEDIA_REMOVED);
-    assertThat(ShadowEnvironment.getStorageState(storageDir2))
-        .isEqualTo(Environment.MEDIA_REMOVED);
+    assertThat(ShadowEnvironment.getStorageState(storageDir2)).isEqualTo(Environment.MEDIA_REMOVED);
     assertThat(ShadowEnvironment.getExternalStorageState(new File(storageDir1, "subpath")))
         .isEqualTo(Environment.MEDIA_MOUNTED);
     assertThat(ShadowEnvironment.getStorageState(new File(storageDir1, "subpath")))

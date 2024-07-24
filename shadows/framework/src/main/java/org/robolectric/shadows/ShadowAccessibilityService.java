@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
@@ -51,7 +50,7 @@ public class ShadowAccessibilityService extends ShadowService {
   private boolean isScreenshotError = false;
 
   @Implementation
-  protected final boolean performGlobalAction(int action) {
+  protected boolean performGlobalAction(int action) {
     globalActionsPerformed.add(action);
     return true;
   }
@@ -61,7 +60,7 @@ public class ShadowAccessibilityService extends ShadowService {
   }
 
   @Implementation(minSdk = S)
-  protected final List<AccessibilityNodeInfo.AccessibilityAction> getSystemActions() {
+  protected List<AccessibilityNodeInfo.AccessibilityAction> getSystemActions() {
     return systemActions;
   }
 
@@ -75,7 +74,7 @@ public class ShadowAccessibilityService extends ShadowService {
    * the values provided to {@link #setWindows(List<AccessibilityWindowInfo>)}. Returns an empty
    * list if not set.
    */
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected List<AccessibilityWindowInfo> getWindows() {
     List<AccessibilityWindowInfo> windowInfos = windows.get(Display.DEFAULT_DISPLAY);
     if (windowInfos != null) {
@@ -186,7 +185,7 @@ public class ShadowAccessibilityService extends ShadowService {
   /**
    * Returns a list of gestures that have been dispatched.
    *
-   * Gestures are dispatched by calling {@link AccessibilityService#dispatchGesture}.
+   * <p>Gestures are dispatched by calling {@link AccessibilityService#dispatchGesture}.
    */
   public List<GestureDispatch> getGesturesDispatched() {
     return gesturesDispatched;
@@ -195,7 +194,7 @@ public class ShadowAccessibilityService extends ShadowService {
   /**
    * Sets whether the service is currently able to dispatch gestures.
    *
-   * If {@code false}, {@link AccessibilityService#dispatchGesture} will return {@code false}.
+   * <p>If {@code false}, {@link AccessibilityService#dispatchGesture} will return {@code false}.
    */
   public void setCanDispatchGestures(boolean canDispatchGestures) {
     this.canDispatchGestures = canDispatchGestures;
@@ -204,7 +203,7 @@ public class ShadowAccessibilityService extends ShadowService {
   /**
    * Represents a gesture that has been dispatched through the accessibility service.
    *
-   * Gestures are dispatched by calling {@link AccessibilityService#dispatchGesture}.
+   * <p>Gestures are dispatched by calling {@link AccessibilityService#dispatchGesture}.
    */
   public static final class GestureDispatch {
     private final GestureDescription description;
@@ -223,7 +222,7 @@ public class ShadowAccessibilityService extends ShadowService {
     /**
      * The callback that is to be invoked once the gesture has finished dispatching.
      *
-     * The shadow itself does not invoke this callback. You must manually invoke it to run it.
+     * <p>The shadow itself does not invoke this callback. You must manually invoke it to run it.
      */
     public GestureResultCallback callback() {
       return callback;

@@ -16,20 +16,19 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
+import org.robolectric.annotation.Resetter;
 import org.robolectric.shadow.api.Shadow;
 
-/**
- * Fake implementation of {@link android.os.storage.StorageManager}
- */
+/** Fake implementation of {@link android.os.storage.StorageManager} */
 @Implements(StorageManager.class)
 public class ShadowStorageManager {
 
   private static boolean isFileEncryptionSupported = true;
-  private final List<StorageVolume> storageVolumeList = new ArrayList<>();
+  private static final List<StorageVolume> storageVolumeList = new ArrayList<>();
 
   @Implementation(minSdk = M)
   protected static StorageVolume[] getVolumeList(int userId, int flags) {
-    return new StorageVolume[0];
+    return storageVolumeList.toArray(new StorageVolume[0]);
   }
 
   /**
@@ -109,5 +108,10 @@ public class ShadowStorageManager {
     ShadowUserManager extract =
         Shadow.extract(RuntimeEnvironment.getApplication().getSystemService(UserManager.class));
     return extract.isUserUnlocked();
+  }
+
+  @Resetter
+  public static void reset() {
+    storageVolumeList.clear();
   }
 }

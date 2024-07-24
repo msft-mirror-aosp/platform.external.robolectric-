@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT;
 import static android.os.Build.VERSION_CODES.O;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -83,7 +82,9 @@ public class ShadowSensorManager {
     return ImmutableList.copyOf(sensorMap.get(type));
   }
 
-  /** @param handler is ignored. */
+  /**
+   * @param handler is ignored.
+   */
   @Implementation
   protected boolean registerListener(
       SensorEventListener listener, Sensor sensor, int rate, Handler handler) {
@@ -93,7 +94,7 @@ public class ShadowSensorManager {
   /**
    * @param maxLatency is ignored.
    */
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected boolean registerListener(
       SensorEventListener listener, Sensor sensor, int rate, int maxLatency) {
     return registerListener(listener, sensor, rate);
@@ -103,7 +104,7 @@ public class ShadowSensorManager {
    * @param maxLatency is ignored.
    * @param handler is ignored
    */
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected boolean registerListener(
       SensorEventListener listener, Sensor sensor, int rate, int maxLatency, Handler handler) {
     return registerListener(listener, sensor, rate);
@@ -167,7 +168,7 @@ public class ShadowSensorManager {
     }
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected boolean flush(SensorEventListener listener) {
     // ShadowSensorManager doesn't queue up any sensor events, so nothing actually needs to be
     // flushed. Just call onFlushCompleted for each sensor that would have been flushed.
@@ -243,7 +244,8 @@ public class ShadowSensorManager {
 
   @Implementation(minSdk = O)
   protected Object createDirectChannel(MemoryFile mem) {
-    return ReflectionHelpers.callConstructor(SensorDirectChannel.class,
+    return ReflectionHelpers.callConstructor(
+        SensorDirectChannel.class,
         ClassParameter.from(SensorManager.class, realObject),
         ClassParameter.from(int.class, 0),
         ClassParameter.from(int.class, SensorDirectChannel.TYPE_MEMORY_FILE),

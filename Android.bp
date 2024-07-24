@@ -16,8 +16,8 @@ package {
     default_visibility: [
         "//external/robolectric:__subpackages__",
         "//test/robolectric-extensions:__subpackages__",
-        "//frameworks/base/packages/SettingsLib/tests/robotests:__subpackages__",
-        "//packages/apps/Settings/tests/robotests:__subpackages__"
+        "//frameworks/base/packages/SettingsLib:__subpackages__",
+        "//packages/apps/Settings/tests/robotests:__subpackages__",
     ],
     default_applicable_licenses: ["external_robolectric_license"],
 }
@@ -51,13 +51,26 @@ license {
     ],
 }
 
+// Empty library. Should be removed
+java_library {
+    name: "robolectric_android-all-stub_upstream",
+    visibility: ["//visibility:public"],
+}
+
 // build.prop file created by module type defined in soong/robolectric.go
 robolectric_build_props {
     name: "robolectric_build_props",
-    visibility: [
-        ":__subpackages__",
-        "//external/robolectric-shadows:__subpackages__",
-    ],
+}
+
+java_genrule {
+    name: "robolectric_props_jar",
+    host_supported: true,
+    tools: ["soong_zip"],
+    srcs: [":robolectric_build_props"],
+    out: ["robolectric_props.jar"],
+    cmd: "cp $(location :robolectric_build_props) . && $(location soong_zip) " +
+        "-o $(location robolectric_props.jar) " +
+        "-f ./build.prop ",
 }
 
 java_genrule {
@@ -95,12 +108,15 @@ java_device_for_host {
     ],
 }
 
-java_library_host {
+java_library {
     name: "robolectric-host-android_all",
+    host_supported: true,
+    device_supported: false,
     static_libs: [
         "robolectric_android-all-device-deps",
         "robolectric_tzdata",
         "robolectric_framework_res",
+        "robolectric_props_jar",
     ],
     // WARNING: DO NOT ADD NEW DEPENDENCIES ON THIS MODULE OR ITS DIST JAR
     // This dist jar is an internal implementation detail. For external Gradle builds (outside
@@ -118,17 +134,11 @@ java_library_host {
         ],
         dest: "android-all-robolectric.jar",
     },
-
-    java_resources: [
-        // Copy the build.prop
-        ":robolectric_build_props",
-    ],
     visibility: [
         ":__subpackages__",
-        "//external/robolectric-shadows:__subpackages__",
         "//prebuilts/misc/common/robolectric",
         "//test/robolectric-extensions:__subpackages__",
-        "//frameworks/base/packages/SettingsLib/tests/robotests:__subpackages__",
+        "//frameworks/base/packages/SettingsLib:__subpackages__",
     ],
 }
 
@@ -150,11 +160,11 @@ java_library_host {
         "Robolectric_utils_upstream",
         "Robolectric_utils_reflector_upstream",
         "Robolectric_nativeruntime_upstream",
-        "asm-9.2",
+        "asm-9.6",
         "junit",
-        "asm-tree-9.2",
+        "asm-tree-9.6",
         "guava",
-        "asm-commons-9.2",
+        "asm-commons-9.6",
         "bouncycastle-unbundled",
         "conscrypt-unbundled",
         "robolectric-sqlite4java-0.282",
@@ -167,6 +177,48 @@ java_library_host {
     java_resource_dirs: [
         "shadows/framework/src/main/resources",
         "src/main/resources",
+    ],
+}
+
+// Using visibility as allow list for tests to bypass strict_mode
+java_library {
+    name: "robolectric_non_strict_mode_permission",
+    sdk_version: "current",
+    visibility: [
+      ":__subpackages__",
+      "//vendor:__subpackages__",
+      "//platform_testing/robolab/roboStandaloneProj/tests:__pkg__",
+      "//packages/modules/DeviceLock/DeviceLockController/tests/robolectric:__pkg__",
+      "//packages/apps/StorageManager/robotests:__pkg__",
+      "//packages/apps/KeyChain/robotests:__pkg__",
+      "//packages/apps/CertInstaller/robotests:__pkg__",
+      "//packages/services/Mms/tests/robotests:__pkg__",
+      "//packages/apps/Car/Cluster/DirectRenderingCluster/tests/robotests:__pkg__",
+      "//packages/apps/QuickAccessWallet/tests/robolectric:__pkg__",
+      "//packages/services/Car/tests/CarLibTests:__pkg__",
+      "//frameworks/libs/systemui:__subpackages__",
+      "//packages/apps/WallpaperPicker2/tests/robotests:__pkg__",
+      "//frameworks/opt/wear/signaldetector/robotests:__pkg__",
+      "//packages/apps/EmergencyInfo/tests/robolectric:__pkg__",
+      "//packages/modules/Bluetooth/service:__pkg__",
+      "//frameworks/opt/wear/robotests:__pkg__",
+      "//packages/apps/ThemePicker/tests/robotests:__pkg__",
+      "//packages/modules/DeviceLock/tests/unittests:__pkg__",
+      "//external/mobile-data-download/javatests:__pkg__",
+      "//frameworks/opt/car/setupwizard/library/main/tests/robotests:__pkg__",
+      "//packages/apps/Car/Notification/tests/robotests:__pkg__",
+      "//packages/apps/TvSettings/Settings/tests/robotests:__pkg__",
+      "//packages/apps/Car/Settings/tests/robotests:__pkg__",
+      "//packages/apps/Settings/tests/robotests:__pkg__",
+      "//frameworks/base/packages/SystemUI:__pkg__",
+      "//frameworks/base/services/robotests:__pkg__",
+      "//frameworks/base/services/robotests/backup:__pkg__",
+      "//frameworks/base/packages/CredentialManager/wear/robotests",
+      "//frameworks/base/tests/InputScreenshotTest:__subpackages__",
+      "//frameworks/base/packages/SettingsLib:__subpackages__",
+      "//packages/apps/TV/common/tests/robotests:__pkg__",
+      "//packages/apps/Launcher3/tests:__pkg__",
+      "//packages/apps/Car/Launcher/libs/appgrid/lib/robotests:__pkg__",
     ],
 }
 
@@ -194,10 +246,10 @@ java_host_for_device {
       "//frameworks/base/services/robotests:__pkg__",
       "//frameworks/base/services/robotests/backup:__pkg__",
       "//frameworks/base/packages/CredentialManager:__subpackages__",
-      "//frameworks/base/packages/SettingsLib/tests/robotests:__subpackages__",
-      "//frameworks/base/packages/SettingsLib/Spa/screenshot:__subpackages__",
+      "//frameworks/base/packages/SettingsLib:__subpackages__",
       "//frameworks/base/packages/SystemUI:__pkg__",
-      "//frameworks/libs/systemui/animationlib:__pkg__",
+      "//frameworks/libs/systemui:__subpackages__",
+      "//packages/apps/Launcher3/tests:__pkg__",
       "//frameworks/base/tests/InputScreenshotTest:__subpackages__",
       "//frameworks/opt/car/setupwizard/library/main/tests/robotests:__pkg__",
       "//frameworks/opt/localepicker/tests:__pkg__",
@@ -223,6 +275,7 @@ java_host_for_device {
       "//packages/apps/Settings/tests/robotests:__pkg__",
       "//packages/apps/ThemePicker/tests/robotests:__pkg__",
       "//packages/apps/WallpaperPicker2/tests/robotests:__pkg__",
+      "//packages/apps/WallpaperPicker2/tests/robotests/common:__pkg__",
       "//packages/apps/TvSettings/Settings/tests/robotests:__pkg__",
       "//packages/apps/KeyChain/robotests:__pkg__",
       "//packages/apps/CertInstaller/robotests:__pkg__",

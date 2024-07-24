@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.Q;
@@ -28,7 +26,6 @@ import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 
 @RunWith(AndroidJUnit4.class)
-@Config(minSdk = JELLY_BEAN_MR1)
 public class ShadowDisplayTest {
 
   private Display display;
@@ -93,8 +90,7 @@ public class ShadowDisplayTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
-  public void stateChangeShouldApplyToOtherInstancesOfSameDisplay_postKitKatFields() {
+  public void stateChangeShouldApplyToOtherInstancesOfSameDisplay() {
     shadow.setState(Display.STATE_DOZE_SUSPEND);
 
     display = DisplayManagerGlobal.getInstance().getRealDisplay(Display.DEFAULT_DISPLAY);
@@ -145,8 +141,8 @@ public class ShadowDisplayTest {
   }
 
   /**
-   * The {@link android.view.Display#getOrientation()} method is deprecated, but for
-   * testing purposes, return the value gotten from {@link android.view.Display#getRotation()}
+   * The {@link android.view.Display#getOrientation()} method is deprecated, but for testing
+   * purposes, return the value gotten from {@link android.view.Display#getRotation()}
    */
   @Test
   public void deprecatedGetOrientation_returnsGetRotation() {

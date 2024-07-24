@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
@@ -40,7 +39,7 @@ import org.robolectric.util.reflector.Constructor;
 import org.robolectric.util.reflector.ForType;
 
 /** Shadow implementation of {@link android.service.voice.AlwaysOnHotwordDetector}. */
-@Implements(value = AlwaysOnHotwordDetector.class, minSdk = LOLLIPOP, isInAndroidSdk = false)
+@Implements(value = AlwaysOnHotwordDetector.class, isInAndroidSdk = false)
 public class ShadowAlwaysOnHotwordDetector {
 
   @RealObject private AlwaysOnHotwordDetector realObject;
@@ -165,9 +164,9 @@ public class ShadowAlwaysOnHotwordDetector {
   /** Shadow for AsyncTask kicked off in the constructor of AlwaysOnHotwordDetector. */
   @Implements(
       className = "android.service.voice.AlwaysOnHotwordDetector$RefreshAvailabiltyTask",
-      minSdk = LOLLIPOP,
       maxSdk = TIRAMISU,
       isInAndroidSdk = false)
+  @SuppressWarnings("robolectric.mismatchedTypes")
   public static class ShadowRefreshAvailabilityTask<Params, Progress, Result>
       extends ShadowPausedAsyncTask<Params, Progress, Result> {
 
@@ -176,7 +175,7 @@ public class ShadowAlwaysOnHotwordDetector {
       return STATE_KEYPHRASE_ENROLLED;
     }
 
-    @Implementation
+    @Implementation(maxSdk = Q)
     protected boolean internalGetIsEnrolled(int keyphraseId, Locale locale) {
       return true;
     }

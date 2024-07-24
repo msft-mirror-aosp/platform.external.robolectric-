@@ -3,8 +3,6 @@ package org.robolectric.shadows;
 import static android.content.pm.PackageManager.MATCH_DEFAULT_ONLY;
 import static android.content.pm.PackageManager.PERMISSION_DENIED;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
@@ -16,6 +14,7 @@ import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
+import android.annotation.Nullable;
 import android.app.Activity;
 import android.app.ActivityThread;
 import android.app.Fragment;
@@ -40,7 +39,6 @@ import android.os.Process;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Pair;
-import androidx.annotation.Nullable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.AsyncFunction;
 import com.google.common.util.concurrent.Futures;
@@ -75,7 +73,7 @@ import org.robolectric.util.reflector.Direct;
 import org.robolectric.util.reflector.ForType;
 import org.robolectric.util.reflector.WithType;
 
-@Implements(value = Instrumentation.class, looseSignatures = true)
+@Implements(value = Instrumentation.class)
 public class ShadowInstrumentation {
 
   @RealObject private Instrumentation realObject;
@@ -100,6 +98,7 @@ public class ShadowInstrumentation {
 
   @GuardedBy("itself")
   private final List<Wrapper> registeredReceivers = new ArrayList<>();
+
   // map of pid+uid to granted permissions
   private final Map<Pair<Integer, Integer>, Set<String>> grantedPermissionsMap =
       Collections.synchronizedMap(new HashMap<>());
@@ -198,7 +197,7 @@ public class ShadowInstrumentation {
    *
    * <p>Currently ignores the user.
    */
-  @Implementation(minSdk = JELLY_BEAN_MR1, maxSdk = N_MR1)
+  @Implementation(maxSdk = N_MR1)
   protected ActivityResult execStartActivity(
       Context who,
       IBinder contextThread,
@@ -234,7 +233,7 @@ public class ShadowInstrumentation {
     ShadowWindowManagerGlobal.setInTouchMode(inTouchMode);
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2, maxSdk = M)
+  @Implementation(maxSdk = M)
   protected UiAutomation getUiAutomation() {
     return getUiAutomation(0);
   }
@@ -363,8 +362,8 @@ public class ShadowInstrumentation {
     // The receiver must hold the permission specified by sendBroadcast, and the broadcaster must
     // hold the permission specified by registerReceiver.
     boolean hasPermissionFromManifest =
-        hasRequiredPermissionForBroadcast(wrapper.context, receiverPermission)
-            && hasRequiredPermissionForBroadcast(broadcastContext, wrapper.broadcastPermission);
+        hasRequiredPermission(wrapper.context, receiverPermission)
+            && hasRequiredPermission(broadcastContext, wrapper.broadcastPermission);
     // Many existing tests don't declare manifest permissions, relying on the old equality check.
     boolean hasPermissionForBackwardsCompatibility =
         TextUtils.equals(receiverPermission, wrapper.broadcastPermission);
@@ -381,8 +380,7 @@ public class ShadowInstrumentation {
   }
 
   /** A null {@code requiredPermission} indicates that no permission is required. */
-  private static boolean hasRequiredPermissionForBroadcast(
-      Context context, @Nullable String requiredPermission) {
+  static boolean hasRequiredPermission(Context context, @Nullable String requiredPermission) {
     if (requiredPermission == null) {
       return true;
     }
@@ -525,7 +523,7 @@ public class ShadowInstrumentation {
   void sendBroadcastWithPermission(
       Intent intent, String receiverPermission, Context context, int resultCode) {
     sendBroadcastWithPermission(
-        intent, /*userHandle=*/ null, receiverPermission, context, null, resultCode);
+        intent, /* userHandle= */ null, receiverPermission, context, null, resultCode);
   }
 
   void sendBroadcastWithPermission(
@@ -535,7 +533,7 @@ public class ShadowInstrumentation {
       @Nullable Bundle broadcastOptions,
       int resultCode) {
     sendBroadcastWithPermission(
-        intent, /*userHandle=*/ null, receiverPermission, context, broadcastOptions, resultCode);
+        intent, /* userHandle= */ null, receiverPermission, context, broadcastOptions, resultCode);
   }
 
   void sendBroadcastWithPermission(
@@ -555,7 +553,7 @@ public class ShadowInstrumentation {
     List<Wrapper> wrappers =
         getAppropriateWrappers(
             context,
-            /*userHandle=*/ null,
+            /* userHandle= */ null,
             intent,
             receiverPermission,
             /* broadcastOptions= */ null);
@@ -887,7 +885,7 @@ public class ShadowInstrumentation {
 
   void sendBroadcast(Intent intent, Context context) {
     sendBroadcastWithPermission(
-        intent, /*userHandle=*/ null, /*receiverPermission=*/ null, context);
+        intent, /* userHandle= */ null, /* receiverPermission= */ null, context);
   }
 
   Intent registerReceiver(
@@ -1064,15 +1062,6 @@ public class ShadowInstrumentation {
   /** Reflector interface for {@link Instrumentation}'s internals. */
   @ForType(Instrumentation.class)
   public interface _Instrumentation_ {
-    // <= JELLY_BEAN_MR1:
-    void init(
-        ActivityThread thread,
-        Context instrContext,
-        Context appContext,
-        ComponentName component,
-        @WithType("android.app.IInstrumentationWatcher") Object watcher);
-
-    // > JELLY_BEAN_MR1:
     void init(
         ActivityThread thread,
         Context instrContext,

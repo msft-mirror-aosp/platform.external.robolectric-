@@ -16,7 +16,7 @@ import org.robolectric.util.reflector.Direct;
 import org.robolectric.util.reflector.ForType;
 
 /** Shadow for {@link android.telecom.CallScreeningService}. */
-@Implements(CallScreeningService.class)
+@Implements(value = CallScreeningService.class, minSdk = N)
 public final class ShadowCallScreeningService {
   /** Contains the parameters used to call {@link CallScreeningService#respondToCall}. */
   public static final class RespondToCallInput {
@@ -43,7 +43,7 @@ public final class ShadowCallScreeningService {
 
   /** Shadows {@link CallScreeningService#respondToCall}. */
   @Implementation(minSdk = N)
-  protected final void respondToCall(Call.Details callDetails, CallResponse response) {
+  protected void respondToCall(Call.Details callDetails, CallResponse response) {
     lastRespondToCallInput = Optional.of(new RespondToCallInput(callDetails, response));
 
     if (shouldForwardResponseToRealObject()) {

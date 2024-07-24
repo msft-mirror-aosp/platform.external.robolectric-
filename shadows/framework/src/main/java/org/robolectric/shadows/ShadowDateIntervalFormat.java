@@ -1,18 +1,16 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
-import static android.os.Build.VERSION_CODES.TIRAMISU;
 
 import java.text.FieldPosition;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import libcore.icu.DateIntervalFormat;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 
-@Implements(className = "libcore.icu.DateIntervalFormat", isInAndroidSdk = false, minSdk = KITKAT,
-        maxSdk = TIRAMISU)
+@Implements(value = DateIntervalFormat.class, isInAndroidSdk = false)
 public class ShadowDateIntervalFormat {
 
   private static long address;
@@ -21,7 +19,8 @@ public class ShadowDateIntervalFormat {
   @Implementation(maxSdk = LOLLIPOP_MR1)
   public static long createDateIntervalFormat(String skeleton, String localeName, String tzName) {
     address++;
-    INTERVAL_CACHE.put(address, com.ibm.icu.text.DateIntervalFormat.getInstance(skeleton, new Locale(localeName)));
+    INTERVAL_CACHE.put(
+        address, com.ibm.icu.text.DateIntervalFormat.getInstance(skeleton, new Locale(localeName)));
     return address;
   }
 
@@ -36,7 +35,9 @@ public class ShadowDateIntervalFormat {
     StringBuffer buffer = new StringBuffer();
 
     FieldPosition pos = new FieldPosition(0);
-    INTERVAL_CACHE.get(address).format(new com.ibm.icu.util.DateInterval(fromDate, toDate), buffer, pos);
+    INTERVAL_CACHE
+        .get(address)
+        .format(new com.ibm.icu.util.DateInterval(fromDate, toDate), buffer, pos);
 
     return buffer.toString();
   }

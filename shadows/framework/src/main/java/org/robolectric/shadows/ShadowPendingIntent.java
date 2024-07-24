@@ -5,11 +5,11 @@ import static android.app.PendingIntent.FLAG_IMMUTABLE;
 import static android.app.PendingIntent.FLAG_NO_CREATE;
 import static android.app.PendingIntent.FLAG_ONE_SHOT;
 import static android.app.PendingIntent.FLAG_UPDATE_CURRENT;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.S;
+import static org.robolectric.RuntimeEnvironment.getApiLevel;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.annotation.NonNull;
@@ -45,6 +45,7 @@ import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.ForType;
+import org.robolectric.versioning.AndroidVersions.V;
 
 @Implements(PendingIntent.class)
 @SuppressLint("NewApi")
@@ -477,7 +478,7 @@ public class ShadowPendingIntent {
     return getCreatorPackage();
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected String getCreatorPackage() {
     return (creatorPackage == null)
         ? RuntimeEnvironment.getApplication().getPackageName()
@@ -488,7 +489,7 @@ public class ShadowPendingIntent {
     this.creatorPackage = creatorPackage;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected int getCreatorUid() {
     return creatorUid;
   }
@@ -560,7 +561,16 @@ public class ShadowPendingIntent {
     parceledPendingIntents.add(sender);
     out.writeInt(index);
 
-    if (RuntimeEnvironment.getApiLevel() >= N) {
+    if (getApiLevel() >= V.SDK_INT) {
+      ThreadLocal<List<OnMarshaledListener>> sOnMarshaledListeners =
+          ReflectionHelpers.getStaticField(PendingIntent.class, "sOnMarshaledListener");
+      List<OnMarshaledListener> listeners = sOnMarshaledListeners.get();
+      if (listeners != null) {
+        for (OnMarshaledListener listener : listeners) {
+          listener.onMarshaled(sender, out, 0);
+        }
+      }
+    } else if (getApiLevel() >= N) {
       ThreadLocal<OnMarshaledListener> sOnMarshaledListener =
           ReflectionHelpers.getStaticField(PendingIntent.class, "sOnMarshaledListener");
       OnMarshaledListener listener = sOnMarshaledListener.get();
@@ -693,7 +703,6 @@ public class ShadowPendingIntent {
       createdIntents.clear();
       parceledPendingIntents.clear();
     }
-
   }
 
   @ForType(PendingIntent.class)

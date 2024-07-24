@@ -116,7 +116,6 @@ public class ShadowLocationManagerTest {
   }
 
   @Test
-  @Config(minSdk = VERSION_CODES.KITKAT)
   public void testGetProvider() {
     LocationProvider p;
 
@@ -903,7 +902,6 @@ public class ShadowLocationManagerTest {
   }
 
   @Test
-  @Config(minSdk = VERSION_CODES.LOLLIPOP)
   public void testRequestLocationUpdates_LocationRequest() {
     Location loc1 = createLocation(NETWORK_PROVIDER);
     Location loc2 = createLocation(NETWORK_PROVIDER);
@@ -1225,9 +1223,9 @@ public class ShadowLocationManagerTest {
   @Test
   public void testSimulateLocation_FastestInterval() {
     Location loc1 = createLocation(MY_PROVIDER);
-    loc1.setTime(1);
+    loc1.setElapsedRealtimeNanos(1000000);
     Location loc2 = createLocation(MY_PROVIDER);
-    loc2.setTime(10);
+    loc2.setElapsedRealtimeNanos(10000000);
 
     TestLocationListener myListener = new TestLocationListener();
 
@@ -1769,8 +1767,7 @@ public class ShadowLocationManagerTest {
     }
 
     @Override
-    public void onStatusChanged(String s, int i, Bundle bundle) {
-    }
+    public void onStatusChanged(String s, int i, Bundle bundle) {}
 
     @Override
     public void onProviderEnabled(String s) {

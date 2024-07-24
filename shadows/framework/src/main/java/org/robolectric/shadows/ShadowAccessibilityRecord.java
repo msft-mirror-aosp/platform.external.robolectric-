@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.view.View;
@@ -13,9 +12,7 @@ import org.robolectric.shadow.api.Shadow;
 import org.robolectric.util.reflector.Direct;
 import org.robolectric.util.reflector.ForType;
 
-/**
- * Shadow of {@link android.view.accessibility.AccessibilityRecord}.
- */
+/** Shadow of {@link android.view.accessibility.AccessibilityRecord}. */
 @Implements(AccessibilityRecord.class)
 public class ShadowAccessibilityRecord {
 
@@ -80,7 +77,7 @@ public class ShadowAccessibilityRecord {
    *
    * @param id The id to set
    */
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   public void setWindowId(int id) {
     windowId = id;
   }

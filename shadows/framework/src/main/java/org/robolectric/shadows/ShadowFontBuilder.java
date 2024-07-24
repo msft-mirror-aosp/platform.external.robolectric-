@@ -4,10 +4,10 @@ import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
 
+import android.annotation.RequiresApi;
 import android.content.res.AssetManager;
 import android.graphics.fonts.Font;
 import android.graphics.fonts.FontStyle;
-import androidx.annotation.RequiresApi;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,7 +77,7 @@ public class ShadowFontBuilder {
 
     // Guarded<AssetManager2>* mgr = AssetManagerForJavaObject(env, assetMgr);
     CppAssetManager2 mgr = ShadowArscAssetManager10.AssetManagerForJavaObject(assetMgr);
-    //if (mgr == nullptr) {
+    // if (mgr == nullptr) {
     if (mgr == null) {
       return 0;
     }
@@ -96,8 +96,10 @@ public class ShadowFontBuilder {
         asset = mgr.Open(path, AccessMode.ACCESS_BUFFER);
       } else if (cookie > 0) {
         // Valid java cookies are 1-based, but AssetManager cookies are 0-based.
-        // asset = locked_mgr->OpenNonAsset(str.c_str(), static_cast<ApkAssetsCookie>(cookie - 1), Asset::ACCESS_BUFFER);
-        asset = mgr.OpenNonAsset(path, ApkAssetsCookie.forInt(cookie - 1), AccessMode.ACCESS_BUFFER);
+        // asset = locked_mgr->OpenNonAsset(str.c_str(), static_cast<ApkAssetsCookie>(cookie - 1),
+        // Asset::ACCESS_BUFFER);
+        asset =
+            mgr.OpenNonAsset(path, ApkAssetsCookie.forInt(cookie - 1), AccessMode.ACCESS_BUFFER);
       } else {
         // asset = locked_mgr->OpenNonAsset(str.c_str(), Asset::ACCESS_BUFFER);
         asset = mgr.OpenNonAsset(path, AccessMode.ACCESS_BUFFER);
@@ -112,7 +114,8 @@ public class ShadowFontBuilder {
   protected static ByteBuffer nGetAssetBuffer(long nativeAsset) {
     // Asset* asset = toAsset(nativeAsset);
     Asset asset = Registries.NATIVE_ASSET_REGISTRY.getNativeObject(nativeAsset);
-    //return env->NewDirectByteBuffer(const_cast<void*>(asset->getBuffer(false)), asset->getLength());
+    // return env->NewDirectByteBuffer(const_cast<void*>(asset->getBuffer(false)),
+    // asset->getLength());
     return ByteBuffer.wrap(asset.getBuffer(false));
   }
 

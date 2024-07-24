@@ -6,17 +6,14 @@ import static android.os.Build.VERSION_CODES.S_V2;
 import static org.robolectric.annotation.TextLayoutMode.Mode.REALISTIC;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
-import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Build.VERSION_CODES;
-import android.os.Looper;
 import android.os.RemoteException;
 import android.util.MergedConfiguration;
 import android.view.Display;
 import android.view.HandlerActionQueue;
-import android.view.IWindowSession;
 import android.view.InsetsState;
 import android.view.Surface;
 import android.view.SurfaceControl;
@@ -26,6 +23,7 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.window.ClientWindowFrames;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Optional;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
@@ -94,13 +92,6 @@ public class ShadowViewRootImpl {
     ShadowViewRootImpl.isNavigationBarVisible = Optional.empty();
   }
 
-  @Implementation(maxSdk = VERSION_CODES.JELLY_BEAN)
-  protected static IWindowSession getWindowSession(Looper mainLooper) {
-    IWindowSession windowSession = ShadowWindowManagerGlobal.getWindowSession();
-    ReflectionHelpers.setStaticField(ViewRootImpl.class, "sWindowSession", windowSession);
-    return windowSession;
-  }
-
   @Implementation
   public void playSoundEffect(int effectId) {}
 
@@ -124,7 +115,46 @@ public class ShadowViewRootImpl {
   }
 
   public void callDispatchResized() {
-    if (RuntimeEnvironment.getApiLevel() > VERSION_CODES.TIRAMISU) {
+    Optional<Class<?>> activityWindowInfoClass =
+        ReflectionHelpers.attemptLoadClass(
+            this.getClass().getClassLoader(), "android.window.ActivityWindowInfo");
+    if (RuntimeEnvironment.getApiLevel() > VERSION_CODES.UPSIDE_DOWN_CAKE
+        && activityWindowInfoClass.isPresent()) {
+      Display display = getDisplay();
+      Rect frame = new Rect();
+      display.getRectSize(frame);
+
+      ClientWindowFrames frames = new ClientWindowFrames();
+      // set the final field
+      ReflectionHelpers.setField(frames, "frame", frame);
+      final ClassParameter<?>[] parameters =
+          new ClassParameter<?>[] {
+            ClassParameter.from(ClientWindowFrames.class, frames),
+            ClassParameter.from(boolean.class, true), /* reportDraw */
+            ClassParameter.from(
+                MergedConfiguration.class, new MergedConfiguration()), /* mergedConfiguration */
+            ClassParameter.from(InsetsState.class, new InsetsState()), /* insetsState */
+            ClassParameter.from(boolean.class, false), /* forceLayout */
+            ClassParameter.from(boolean.class, false), /* alwaysConsumeSystemBars */
+            ClassParameter.from(int.class, 0), /* displayId */
+            ClassParameter.from(int.class, 0), /* syncSeqId */
+            ClassParameter.from(boolean.class, false), /* dragResizing */
+            ClassParameter.from(
+                activityWindowInfoClass.get(),
+                ReflectionHelpers.newInstance(
+                    activityWindowInfoClass.get())) /* activityWindowInfo */
+          };
+      try {
+        ReflectionHelpers.callInstanceMethod(
+            ViewRootImpl.class, realObject, "dispatchResized", parameters);
+      } catch (RuntimeException ex) {
+        ReflectionHelpers.callInstanceMethod(
+            ViewRootImpl.class,
+            realObject,
+            "dispatchResized",
+            Arrays.copyOfRange(parameters, 0, parameters.length - 1));
+      }
+    } else if (RuntimeEnvironment.getApiLevel() > VERSION_CODES.TIRAMISU) {
       Display display = getDisplay();
       Rect frame = new Rect();
       display.getRectSize(frame);
@@ -222,14 +252,7 @@ public class ShadowViewRootImpl {
   }
 
   protected Display getDisplay() {
-    if (RuntimeEnvironment.getApiLevel() > VERSION_CODES.JELLY_BEAN_MR1) {
-      return reflector(ViewRootImplReflector.class, realObject).getDisplay();
-    } else {
-      WindowManager windowManager =
-          (WindowManager)
-              realObject.getView().getContext().getSystemService(Context.WINDOW_SERVICE);
-      return windowManager.getDefaultDisplay();
-    }
+    return reflector(ViewRootImplReflector.class, realObject).getDisplay();
   }
 
   @Implementation
@@ -356,32 +379,6 @@ public class ShadowViewRootImpl {
     @Accessor("mWindowAttributes")
     WindowManager.LayoutParams getWindowAttributes();
 
-    // <= JELLY_BEAN
-    void dispatchResized(
-        int w,
-        int h,
-        Rect contentInsets,
-        Rect visibleInsets,
-        boolean reportDraw,
-        Configuration newConfig);
-
-    // <= JELLY_BEAN_MR1
-    void dispatchResized(
-        Rect frame,
-        Rect contentInsets,
-        Rect visibleInsets,
-        boolean reportDraw,
-        Configuration newConfig);
-
-    // <= KITKAT
-    void dispatchResized(
-        Rect frame,
-        Rect overscanInsets,
-        Rect contentInsets,
-        Rect visibleInsets,
-        boolean reportDraw,
-        Configuration newConfig);
-
     // <= LOLLIPOP_MR1
     void dispatchResized(
         Rect frame,
@@ -452,13 +449,7 @@ public class ShadowViewRootImpl {
       Rect emptyRect = new Rect(0, 0, 0, 0);
 
       int apiLevel = RuntimeEnvironment.getApiLevel();
-      if (apiLevel <= Build.VERSION_CODES.JELLY_BEAN) {
-        dispatchResized(frame.width(), frame.height(), emptyRect, emptyRect, true, null);
-      } else if (apiLevel <= VERSION_CODES.JELLY_BEAN_MR1) {
-        dispatchResized(frame, emptyRect, emptyRect, true, null);
-      } else if (apiLevel <= Build.VERSION_CODES.KITKAT) {
-        dispatchResized(frame, emptyRect, emptyRect, emptyRect, true, null);
-      } else if (apiLevel <= Build.VERSION_CODES.LOLLIPOP_MR1) {
+      if (apiLevel <= Build.VERSION_CODES.LOLLIPOP_MR1) {
         dispatchResized(frame, emptyRect, emptyRect, emptyRect, emptyRect, true, null);
       } else if (apiLevel <= Build.VERSION_CODES.M) {
         dispatchResized(frame, emptyRect, emptyRect, emptyRect, emptyRect, emptyRect, true, null);

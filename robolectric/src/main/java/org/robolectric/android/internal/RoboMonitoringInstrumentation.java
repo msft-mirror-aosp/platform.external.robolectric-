@@ -1,5 +1,6 @@
 package org.robolectric.android.internal;
 
+import static android.os.Build.VERSION_CODES.O;
 import static org.robolectric.Shadows.shadowOf;
 import static org.robolectric.shadow.api.Shadow.extract;
 
@@ -35,6 +36,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Nullable;
 import org.robolectric.Robolectric;
@@ -62,6 +64,8 @@ public class RoboMonitoringInstrumentation extends Instrumentation {
   private final IntentMonitorImpl intentMonitor = new IntentMonitorImpl();
   private final List<ActivityController<?>> createdActivities = new ArrayList<>();
 
+  private final AtomicBoolean attachedConfigListener = new AtomicBoolean();
+
   /**
    * Sets up lifecycle monitoring, and argument registry.
    *
@@ -74,13 +78,6 @@ public class RoboMonitoringInstrumentation extends Instrumentation {
     ActivityLifecycleMonitorRegistry.registerInstance(lifecycleMonitor);
     ApplicationLifecycleMonitorRegistry.registerInstance(applicationMonitor);
     IntentMonitorRegistry.registerInstance(intentMonitor);
-    if (!Boolean.getBoolean("robolectric.createActivityContexts")) {
-      // To avoid infinite recursion listen to the system resources, this will be updated before
-      // the application resources but because activities use the application resources they will
-      // get updated by the first activity (via updateConfiguration).
-      shadowOf(Resources.getSystem()).addConfigurationChangeListener(this::updateConfiguration);
-    }
-
     super.onCreate(arguments);
   }
 
@@ -115,6 +112,14 @@ public class RoboMonitoringInstrumentation extends Instrumentation {
     } catch (ClassNotFoundException e) {
       throw new RuntimeException("Could not load activity " + ai.name, e);
     }
+
+    if (attachedConfigListener.compareAndSet(false, true) && !willCreateActivityContexts()) {
+      // To avoid infinite recursion listen to the system resources, this will be updated before
+      // the application resources but because activities use the application resources they will
+      // get updated by the first activity (via updateConfiguration).
+      shadowOf(Resources.getSystem()).addConfigurationChangeListener(this::updateConfiguration);
+    }
+
     AtomicReference<ActivityController<? extends Activity>> activityControllerReference =
         new AtomicReference<>();
     ShadowInstrumentation.runOnMainSyncNoIdle(
@@ -141,7 +146,7 @@ public class RoboMonitoringInstrumentation extends Instrumentation {
 
   @Override
   public void callApplicationOnCreate(Application app) {
-    if (Boolean.getBoolean("robolectric.createActivityContexts")) {
+    if (willCreateActivityContexts()) {
       shadowOf(app.getResources()).addConfigurationChangeListener(this::updateConfiguration);
     }
     applicationMonitor.signalLifecycleChange(app, ApplicationStage.PRE_ON_CREATE);
@@ -431,5 +436,10 @@ public class RoboMonitoringInstrumentation extends Instrumentation {
         }
       }
     }
+  }
+
+  private static boolean willCreateActivityContexts() {
+    return RuntimeEnvironment.getApiLevel() >= O
+        && Boolean.getBoolean("robolectric.createActivityContexts");
   }
 }

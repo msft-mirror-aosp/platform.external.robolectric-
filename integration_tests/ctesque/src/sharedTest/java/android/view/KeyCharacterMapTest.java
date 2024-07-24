@@ -8,14 +8,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.robolectric.annotation.internal.DoNotInstrument;
 
 /**
  * Test {@link android.view.KeyCharacterMap}.
  *
  * <p>Inspired from Android cts/tests/tests/view/src/android/view/cts/KeyCharacterMap.java
  */
-@DoNotInstrument
 @RunWith(AndroidJUnit4.class)
 public final class KeyCharacterMapTest {
 
@@ -86,6 +84,9 @@ public final class KeyCharacterMapTest {
     // Just assert that we got something back, there are many ways to return correct KeyEvents for
     // this sequence.
     assertThat(keyCharacterMap.getEvents("Test".toCharArray())).isNotEmpty();
+
+    char c = 'a';
+    keyCharacterMap.getEvents(new char[] {c});
   }
 
   @Test

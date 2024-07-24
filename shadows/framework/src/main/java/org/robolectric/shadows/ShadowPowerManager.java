@@ -2,7 +2,6 @@ package org.robolectric.shadows;
 
 import static android.content.Intent.ACTION_SCREEN_OFF;
 import static android.content.Intent.ACTION_SCREEN_ON;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
@@ -26,7 +25,6 @@ import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
-import android.os.Build.VERSION_CODES;
 import android.os.PowerManager;
 import android.os.PowerManager.LowPowerStandbyPortDescription;
 import android.os.PowerManager.LowPowerStandbyPortsLock;
@@ -111,7 +109,7 @@ public class ShadowPowerManager {
     setIsInteractive(screenOn);
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean isInteractive() {
     return isInteractive;
   }
@@ -132,7 +130,7 @@ public class ShadowPowerManager {
     }
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean isPowerSaveMode() {
     return isPowerSaveMode;
   }
@@ -143,7 +141,7 @@ public class ShadowPowerManager {
 
   private Map<Integer, Boolean> supportedWakeLockLevels = new HashMap<>();
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean isWakeLockLevelSupported(int level) {
     return supportedWakeLockLevels.containsKey(level) ? supportedWakeLockLevels.get(level) : false;
   }
@@ -559,11 +557,7 @@ public class ShadowPowerManager {
   }
 
   private Context getContext() {
-    if (RuntimeEnvironment.getApiLevel() < VERSION_CODES.JELLY_BEAN_MR1) {
-      return RuntimeEnvironment.getApplication();
-    } else {
-      return reflector(ReflectorPowerManager.class, realPowerManager).getContext();
-    }
+    return reflector(ReflectorPowerManager.class, realPowerManager).getContext();
   }
 
   @Implementation(minSdk = TIRAMISU)
@@ -582,7 +576,7 @@ public class ShadowPowerManager {
   }
 
   @Implementation(minSdk = TIRAMISU)
-  protected void setLowPowerStandbyEnabled(boolean lowPowerStandbyEnabled) {
+  public void setLowPowerStandbyEnabled(boolean lowPowerStandbyEnabled) {
     this.lowPowerStandbyEnabled = lowPowerStandbyEnabled;
   }
 

@@ -1,9 +1,6 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT_WATCH;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.TruthJUnit.assume;
 import static org.junit.Assert.assertNotNull;
 import static org.robolectric.Shadows.shadowOf;
 
@@ -14,10 +11,8 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Rect;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.VectorDrawable;
-import android.os.Build;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.io.ByteArrayInputStream;
@@ -96,7 +91,8 @@ public class ShadowDrawableTest {
     assertThat(context.getResources().getDrawable(R.drawable.drawable_with_nine_patch)).isNotNull();
   }
 
-  @Test public void settingBoundsShouldInvokeCallback() {
+  @Test
+  public void settingBoundsShouldInvokeCallback() {
     TestDrawable drawable = new TestDrawable();
     assertThat(drawable.boundsChanged).isFalse();
     drawable.setBounds(0, 0, 10, 10);
@@ -123,11 +119,6 @@ public class ShadowDrawableTest {
   @Test
   @Config(qualifiers = "hdpi")
   public void drawableShouldLoadImageOfCorrectSizeWithHdpiQualifier() {
-    if (Build.VERSION.SDK_INT >= 28) {
-      // getDrawable depends on ImageDecoder, which depends on binary resources
-      assume().that(ShadowAssetManager.useLegacy()).isFalse();
-    }
-
     final Drawable anImage = context.getResources().getDrawable(R.drawable.robolectric);
 
     assertThat(anImage.getIntrinsicHeight()).isEqualTo(251);
@@ -135,16 +126,6 @@ public class ShadowDrawableTest {
   }
 
   @Test
-  @Config(maxSdk = KITKAT_WATCH)
-  public void testGetBitmapOrVectorDrawableAt19() {
-    // at API 21+ and mdpi, the drawable-anydpi-v21/image_or_vector.xml should be loaded instead
-    // of drawable/image_or_vector.png
-    final Drawable aDrawable = context.getResources().getDrawable(R.drawable.an_image_or_vector);
-    assertThat(aDrawable).isInstanceOf(BitmapDrawable.class);
-  }
-
-  @Test
-  @Config(minSdk = LOLLIPOP)
   public void testGetBitmapOrVectorDrawableAt21() {
     final Drawable aDrawable = context.getResources().getDrawable(R.drawable.an_image_or_vector);
     assertThat(aDrawable).isInstanceOf(VectorDrawable.class);
@@ -154,23 +135,21 @@ public class ShadowDrawableTest {
     public boolean boundsChanged;
 
     @Override
-    public void draw(Canvas canvas) {
-    }
+    public void draw(Canvas canvas) {}
 
     @Override
-    public void setAlpha(int alpha) {
-    }
+    public void setAlpha(int alpha) {}
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
-    }
+    public void setColorFilter(ColorFilter cf) {}
 
     @Override
     public int getOpacity() {
       return 0;
     }
 
-    @Override protected void onBoundsChange(Rect bounds) {
+    @Override
+    protected void onBoundsChange(Rect bounds) {
       boundsChanged = true;
       super.onBoundsChange(bounds);
     }
