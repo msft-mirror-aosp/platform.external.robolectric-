@@ -8,7 +8,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.nfc.INfcCardEmulation;
 import android.nfc.cardemulation.CardEmulation;
-import android.os.Build;
 import android.provider.Settings;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,18 +29,18 @@ public class ShadowCardEmulation {
 
   @RealObject CardEmulation cardEmulation;
 
-  @Implementation(minSdk = Build.VERSION_CODES.KITKAT)
+  @Implementation
   public boolean isDefaultServiceForCategory(ComponentName service, String category) {
     return service.equals(defaultServiceForCategoryMap.get(category));
   }
 
-  @Implementation(minSdk = Build.VERSION_CODES.LOLLIPOP)
+  @Implementation
   public boolean setPreferredService(Activity activity, ComponentName service) {
     preferredService = service;
     return true;
   }
 
-  @Implementation(minSdk = Build.VERSION_CODES.LOLLIPOP)
+  @Implementation
   public boolean unsetPreferredService(Activity activity) {
     preferredService = null;
     return true;
@@ -79,14 +78,12 @@ public class ShadowCardEmulation {
   public static void reset() {
     defaultServiceForCategoryMap = new HashMap<>();
     preferredService = null;
-    if (RuntimeEnvironment.getApiLevel() >= Build.VERSION_CODES.KITKAT) {
-      CardEmulationReflector reflector = reflector(CardEmulationReflector.class);
-      reflector.setIsInitialized(false);
-      reflector.setService(null);
-      Map<Context, CardEmulation> cardEmus = reflector.getCardEmus();
-      if (cardEmus != null) {
-        cardEmus.clear();
-      }
+    CardEmulationReflector reflector = reflector(CardEmulationReflector.class);
+    reflector.setIsInitialized(false);
+    reflector.setService(null);
+    Map<Context, CardEmulation> cardEmus = reflector.getCardEmus();
+    if (cardEmus != null) {
+      cardEmus.clear();
     }
   }
 

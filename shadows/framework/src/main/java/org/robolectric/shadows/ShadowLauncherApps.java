@@ -1,7 +1,6 @@
 package org.robolectric.shadows;
 
 import static android.os.Build.VERSION_CODES.L;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.N_MR1;
 import static android.os.Build.VERSION_CODES.O;
@@ -9,6 +8,8 @@ import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.ComponentName;
 import android.content.IntentSender;
 import android.content.pm.ApplicationInfo;
@@ -26,8 +27,6 @@ import android.os.Looper;
 import android.os.Process;
 import android.os.UserHandle;
 import android.util.Pair;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
@@ -45,7 +44,7 @@ import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.ForType;
 
 /** Shadow of {@link android.content.pm.LauncherApps}. */
-@Implements(value = LauncherApps.class, minSdk = LOLLIPOP)
+@Implements(value = LauncherApps.class)
 public class ShadowLauncherApps {
   private List<ShortcutInfo> shortcuts = new ArrayList<>();
   private final Multimap<UserHandle, String> enabledPackages = HashMultimap.create();

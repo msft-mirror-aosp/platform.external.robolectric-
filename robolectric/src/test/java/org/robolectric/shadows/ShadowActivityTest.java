@@ -1,15 +1,12 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.O_MR1;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static android.os.Looper.getMainLooper;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
@@ -50,6 +47,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.database.Cursor;
 import android.database.MatrixCursor;
+import android.graphics.Color;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build.VERSION_CODES;
@@ -178,7 +176,6 @@ public class ShadowActivityTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN_MR1)
   public void shouldReportDestroyedStatus() {
     try (ActivityController<DialogCreatingActivity> controller =
         Robolectric.buildActivity(DialogCreatingActivity.class)) {
@@ -514,7 +511,6 @@ public class ShadowActivityTest {
   }
 
   @Test
-  @Config(minSdk = JELLY_BEAN)
   public void shouldCallFinishOnFinishAffinity() {
     Activity activity = new Activity();
     activity.finishAffinity();
@@ -523,7 +519,6 @@ public class ShadowActivityTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void shouldCallFinishOnFinishAndRemoveTask() {
     Activity activity = new Activity();
     activity.finishAndRemoveTask();
@@ -601,6 +596,28 @@ public class ShadowActivityTest {
       assertThat(shadowActivity.getTurnScreenOn()).isTrue();
       activity.setTurnScreenOn(false);
       assertThat(shadowActivity.getTurnScreenOn()).isFalse();
+    }
+  }
+
+  public static final class ShowWhenLockedActivity extends Activity {}
+
+  public static final class DoNotShowWhenLockedActivity extends Activity {}
+
+  @Test
+  @Config(minSdk = O_MR1)
+  public void createActivity_showWhenLockedEnabled_returnsTrueForShowWhenLocked() {
+    try (ActivityController<ShowWhenLockedActivity> controller =
+        Robolectric.buildActivity(ShowWhenLockedActivity.class)) {
+      assertThat(shadowOf(controller.get()).getShowWhenLocked()).isTrue();
+    }
+  }
+
+  @Test
+  @Config(minSdk = O_MR1)
+  public void createActivity_showWhenLockedDisabled_returnsFalseForShowWhenLocked() {
+    try (ActivityController<DoNotShowWhenLockedActivity> controller =
+        Robolectric.buildActivity(DoNotShowWhenLockedActivity.class)) {
+      assertThat(shadowOf(controller.get()).getShowWhenLocked()).isFalse();
     }
   }
 
@@ -1018,6 +1035,110 @@ public class ShadowActivityTest {
   }
 
   @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void getOverriddenActivityTransitionOpen_withoutBackgroundColor() {
+    try (ActivityController<Activity> controller = buildActivity(Activity.class).setup()) {
+      Activity activity = controller.get();
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 15, 2);
+      ShadowActivity.OverriddenActivityTransition overriddenActivityTransition =
+          shadowOf(activity).getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN);
+
+      assertThat(overriddenActivityTransition).isNotNull();
+      assertThat(overriddenActivityTransition.enterAnim).isEqualTo(15);
+      assertThat(overriddenActivityTransition.exitAnim).isEqualTo(2);
+      assertThat(overriddenActivityTransition.backgroundColor).isEqualTo(Color.TRANSPARENT);
+    }
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void getOverriddenActivityTransitionClose_withoutBackgroundColor() {
+    try (ActivityController<Activity> controller = buildActivity(Activity.class).setup()) {
+      Activity activity = controller.get();
+      ShadowActivity shadowActivity = shadowOf(activity);
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 15, 2);
+      ShadowActivity.OverriddenActivityTransition overriddenActivityTransition =
+          shadowActivity.getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE);
+
+      assertThat(overriddenActivityTransition).isNotNull();
+      assertThat(overriddenActivityTransition.enterAnim).isEqualTo(15);
+      assertThat(overriddenActivityTransition.exitAnim).isEqualTo(2);
+      assertThat(overriddenActivityTransition.backgroundColor).isEqualTo(Color.TRANSPARENT);
+    }
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void getOverriddenActivityTransitionOpen_withBackgroundColor() {
+    try (ActivityController<Activity> controller = buildActivity(Activity.class).setup()) {
+      Activity activity = controller.get();
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 33, 12, Color.RED);
+      ShadowActivity.OverriddenActivityTransition overriddenActivityTransition =
+          shadowOf(activity).getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN);
+
+      assertThat(overriddenActivityTransition).isNotNull();
+      assertThat(overriddenActivityTransition.enterAnim).isEqualTo(33);
+      assertThat(overriddenActivityTransition.exitAnim).isEqualTo(12);
+      assertThat(overriddenActivityTransition.backgroundColor).isEqualTo(Color.RED);
+    }
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void getOverriddenActivityTransitionClose_withBackgroundColor() {
+    try (ActivityController<Activity> controller = buildActivity(Activity.class).setup()) {
+      Activity activity = controller.get();
+      ShadowActivity shadowActivity = shadowOf(activity);
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 33, 12, Color.RED);
+      ShadowActivity.OverriddenActivityTransition overriddenActivityTransition =
+          shadowActivity.getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE);
+
+      assertThat(overriddenActivityTransition).isNotNull();
+      assertThat(overriddenActivityTransition.enterAnim).isEqualTo(33);
+      assertThat(overriddenActivityTransition.exitAnim).isEqualTo(12);
+      assertThat(overriddenActivityTransition.backgroundColor).isEqualTo(Color.RED);
+    }
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void getOverriddenActivityTransition_invalidType() {
+    try (ActivityController<Activity> controller = buildActivity(Activity.class).setup()) {
+      Activity activity = controller.get();
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 33, 12, Color.RED);
+      ShadowActivity.OverriddenActivityTransition overriddenActivityTransition =
+          shadowOf(activity).getOverriddenActivityTransition(-1);
+      assertThat(overriddenActivityTransition).isNull();
+    }
+  }
+
+  @Test
+  @Config(minSdk = UPSIDE_DOWN_CAKE)
+  public void getOverriddenActivityTransition_beforeOverridingOrAfterClearing() {
+    try (ActivityController<Activity> controller = buildActivity(Activity.class).setup()) {
+      Activity activity = controller.get();
+      ShadowActivity shadowActivity = shadowOf(activity);
+
+      assertThat(shadowActivity.getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN))
+          .isNull();
+
+      assertThat(shadowActivity.getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE))
+          .isNull();
+
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 12, 33);
+      activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 33, 12);
+      activity.clearOverrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN);
+      activity.clearOverrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE);
+
+      assertThat(shadowActivity.getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN))
+          .isNull();
+
+      assertThat(shadowActivity.getOverriddenActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE))
+          .isNull();
+    }
+  }
+
+  @Test
   public void getActionBar_shouldWorkIfActivityHasAnAppropriateTheme() {
     try (ActivityController<ActionBarThemedActivity> controller =
         Robolectric.buildActivity(ActionBarThemedActivity.class)) {
@@ -1211,7 +1332,6 @@ public class ShadowActivityTest {
   }
 
   @Test
-  @Config(minSdk = LOLLIPOP)
   public void lockTask() {
     Activity activity = Robolectric.setupActivity(Activity.class);
 
@@ -1302,7 +1422,6 @@ public class ShadowActivityTest {
   }
 
   @Test
-  @Config(minSdk = KITKAT)
   public void reportFullyDrawn_reported() {
     Activity activity = Robolectric.setupActivity(Activity.class);
     activity.reportFullyDrawn();
@@ -1402,6 +1521,18 @@ public class ShadowActivityTest {
       assertThat(activity.getWindowManager().getDefaultDisplay().getDisplayId())
           .isEqualTo(Display.DEFAULT_DISPLAY);
     }
+  }
+
+  @Test
+  public void buildActivity_abstractActivityClass_throwsRuntimeException() {
+    Throwable throwable =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              Robolectric.buildActivity(AbstractTestActivity.class, null);
+            });
+    assertThat(throwable.getMessage())
+        .isEqualTo("buildActivity must be called with non-abstract class");
   }
 
   @Test
@@ -1679,6 +1810,9 @@ public class ShadowActivityTest {
       transcript.add("onActivityDestroyed");
     }
   }
+
+  /** Test Activity for abstract checking scenario. */
+  abstract static class AbstractTestActivity extends Activity {}
 
   /** Activity for testing */
   public static class TestActivityWithAnotherTheme

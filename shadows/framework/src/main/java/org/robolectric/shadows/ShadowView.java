@@ -1,8 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.KITKAT_WATCH;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.Q;
@@ -165,16 +162,8 @@ public class ShadowView {
     return locationInSurface;
   }
 
-  // Only override up to kitkat, while this version exists after kitkat it just calls through to the
-  // __constructor__(Context, AttributeSet, int, int) variant below.
-  @Implementation(maxSdk = KITKAT)
-  protected void __constructor__(Context context, AttributeSet attributeSet, int defStyle) {
-    this.attributeSet = attributeSet;
-    reflector(_View_.class, realView).__constructor__(context, attributeSet, defStyle);
-  }
-
   /* Note: maxSdk is R because capturing `attributeSet` is not needed any more after R. */
-  @Implementation(minSdk = KITKAT_WATCH, maxSdk = R)
+  @Implementation(maxSdk = R)
   protected void __constructor__(
       Context context, AttributeSet attributeSet, int defStyleAttr, int defStyleRes) {
     this.attributeSet = attributeSet;
@@ -793,7 +782,7 @@ public class ShadowView {
     }
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected boolean isAttachedToWindow() {
     return getAttachInfo() != null;
   }
@@ -954,7 +943,7 @@ public class ShadowView {
     reflector(_View_.class, realView).onDetachedFromWindow();
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected WindowId getWindowId() {
     return WindowIdHelper.getWindowId(this);
   }
@@ -1092,6 +1081,7 @@ public class ShadowView {
    * set.
    */
   static boolean useRealScrolling() {
-    return useRealGraphics() || Boolean.getBoolean("robolectric.useRealScrolling");
+    return useRealGraphics()
+        || Boolean.parseBoolean(System.getProperty("robolectric.useRealScrolling", "true"));
   }
 }

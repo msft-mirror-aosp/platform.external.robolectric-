@@ -11,10 +11,13 @@ import org.robolectric.nativeruntime.DefaultNativeRuntimeLoader;
 import org.robolectric.nativeruntime.LineBreakerNatives;
 import org.robolectric.shadows.ShadowNativeLineBreaker.Picker;
 import org.robolectric.versioning.AndroidVersions.U;
-import org.robolectric.versioning.AndroidVersions.V;
 
 /** Shadow for {@link LineBreaker} that is backed by native code */
-@Implements(value = LineBreaker.class, minSdk = Q, shadowPicker = Picker.class)
+@Implements(
+    value = LineBreaker.class,
+    minSdk = Q,
+    shadowPicker = Picker.class,
+    callNativeMethodsByDefault = true)
 public class ShadowNativeLineBreaker {
   @Implementation(maxSdk = U.SDK_INT)
   protected static long nInit(
@@ -22,24 +25,14 @@ public class ShadowNativeLineBreaker {
     return LineBreakerNatives.nInit(breakStrategy, hyphenationFrequency, isJustified, indents);
   }
 
-  @Implementation(minSdk = V.SDK_INT)
-  protected static long nInit(
-      int breakStrategy,
-      int hyphenationFrequency,
-      boolean isJustified,
-      int[] indents,
-      boolean useBoundsForWidth) {
-    return nInit(breakStrategy, hyphenationFrequency, isJustified, indents);
-  }
-
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static long nGetReleaseFunc() {
     // Called first by the static initializer.
     DefaultNativeRuntimeLoader.injectAndLoad();
     return LineBreakerNatives.nGetReleaseFunc();
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static long nComputeLineBreaks(
       long nativePtr,
       char[] text,
@@ -65,37 +58,37 @@ public class ShadowNativeLineBreaker {
   }
 
   // Result accessors
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static int nGetLineCount(long ptr) {
     return LineBreakerNatives.nGetLineCount(ptr);
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static int nGetLineBreakOffset(long ptr, int idx) {
     return LineBreakerNatives.nGetLineBreakOffset(ptr, idx);
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static float nGetLineWidth(long ptr, int idx) {
     return LineBreakerNatives.nGetLineWidth(ptr, idx);
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static float nGetLineAscent(long ptr, int idx) {
     return LineBreakerNatives.nGetLineAscent(ptr, idx);
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static float nGetLineDescent(long ptr, int idx) {
     return LineBreakerNatives.nGetLineDescent(ptr, idx);
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static int nGetLineFlag(long ptr, int idx) {
     return LineBreakerNatives.nGetLineFlag(ptr, idx);
   }
 
-  @Implementation
+  @Implementation(maxSdk = U.SDK_INT)
   protected static long nGetReleaseResultFunc() {
     return LineBreakerNatives.nGetReleaseResultFunc();
   }

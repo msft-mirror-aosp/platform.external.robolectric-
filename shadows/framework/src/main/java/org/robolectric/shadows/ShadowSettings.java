@@ -1,13 +1,10 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static android.provider.Settings.Secure.LOCATION_MODE_OFF;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -15,7 +12,6 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.location.LocationManager;
-import android.os.Build;
 import android.provider.Settings;
 import android.provider.Settings.Secure;
 import android.provider.Settings.SettingNotFoundException;
@@ -36,6 +32,7 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.Resetter;
 import org.robolectric.util.reflector.ForType;
 import org.robolectric.util.reflector.Static;
+import org.robolectric.versioning.AndroidVersions.U;
 
 @SuppressWarnings({"UnusedDeclaration"})
 @Implements(Settings.class)
@@ -74,7 +71,7 @@ public class ShadowSettings {
       return get(String.class, name).orElse(null);
     }
 
-    @Implementation(minSdk = JELLY_BEAN_MR1)
+    @Implementation
     protected static String getStringForUser(ContentResolver cr, String name, int userHandle) {
       return get(String.class, name).orElse(null);
     }
@@ -161,17 +158,11 @@ public class ShadowSettings {
     private static final Map<String, Optional<Object>> dataMap =
         new ConcurrentHashMap<>(SECURE_DEFAULTS);
 
-    @Implementation(minSdk = JELLY_BEAN_MR1, maxSdk = P)
+    @Implementation(maxSdk = P)
     @SuppressWarnings("robolectric.ShadowReturnTypeMismatch")
     protected static boolean setLocationProviderEnabledForUser(
         ContentResolver cr, String provider, boolean enabled, int uid) {
       return updateEnabledProviders(cr, provider, enabled);
-    }
-
-    @Implementation(maxSdk = JELLY_BEAN)
-    protected static void setLocationProviderEnabled(
-        ContentResolver cr, String provider, boolean enabled) {
-      updateEnabledProviders(cr, provider, enabled);
     }
 
     // only for use locally and by ShadowLocationManager, which requires a tight integration with
@@ -243,20 +234,20 @@ public class ShadowSettings {
       return true;
     }
 
-    @Implementation(minSdk = LOLLIPOP)
+    @Implementation
     protected static boolean putIntForUser(
         ContentResolver cr, String name, int value, int userHandle) {
       putInt(cr, name, value);
       return true;
     }
 
-    @Implementation(minSdk = JELLY_BEAN_MR1)
+    @Implementation
     protected static int getIntForUser(ContentResolver cr, String name, int def, int userHandle) {
       // ignore userhandle
       return getInt(cr, name, def);
     }
 
-    @Implementation(minSdk = JELLY_BEAN_MR1)
+    @Implementation
     protected static int getIntForUser(ContentResolver cr, String name, int userHandle)
         throws SettingNotFoundException {
       // ignore userhandle
@@ -265,9 +256,7 @@ public class ShadowSettings {
 
     @Implementation
     protected static int getInt(ContentResolver cr, String name) throws SettingNotFoundException {
-      if (Settings.Secure.LOCATION_MODE.equals(name)
-          && RuntimeEnvironment.getApiLevel() >= KITKAT
-          && RuntimeEnvironment.getApiLevel() < P) {
+      if (Settings.Secure.LOCATION_MODE.equals(name) && RuntimeEnvironment.getApiLevel() < P) {
         // Map from to underlying location provider storage API to location mode
         return reflector(SettingsSecureReflector.class).getLocationModeForUser(cr, 0);
       }
@@ -277,9 +266,7 @@ public class ShadowSettings {
 
     @Implementation
     protected static int getInt(ContentResolver cr, String name, int def) {
-      if (Settings.Secure.LOCATION_MODE.equals(name)
-          && RuntimeEnvironment.getApiLevel() >= KITKAT
-          && RuntimeEnvironment.getApiLevel() < P) {
+      if (Settings.Secure.LOCATION_MODE.equals(name) && RuntimeEnvironment.getApiLevel() < P) {
         // Map from to underlying location provider storage API to location mode
         return reflector(SettingsSecureReflector.class).getLocationModeForUser(cr, 0);
       }
@@ -297,7 +284,7 @@ public class ShadowSettings {
       return get(String.class, name).orElse(null);
     }
 
-    @Implementation(minSdk = JELLY_BEAN_MR1)
+    @Implementation
     protected static String getStringForUser(ContentResolver cr, String name, int userHandle) {
       return getString(cr, name);
     }
@@ -354,7 +341,7 @@ public class ShadowSettings {
     }
   }
 
-  @Implements(value = Settings.Global.class, minSdk = JELLY_BEAN_MR1)
+  @Implements(value = Settings.Global.class)
   public static class ShadowGlobal {
     private static final ImmutableMap<String, Optional<Object>> DEFAULTS =
         ImmutableMap.<String, Optional<Object>>builder()
@@ -387,7 +374,7 @@ public class ShadowSettings {
       return get(String.class, name).orElse(null);
     }
 
-    @Implementation(minSdk = JELLY_BEAN_MR1)
+    @Implementation
     protected static String getStringForUser(ContentResolver cr, String name, int userHandle) {
       return getString(cr, name);
     }
@@ -514,13 +501,10 @@ public class ShadowSettings {
    * @param adbEnabled new value for whether adb is enabled
    */
   public static void setAdbEnabled(boolean adbEnabled) {
-    // This setting moved from Secure to Global in JELLY_BEAN_MR1
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-      Settings.Global.putInt(
-          RuntimeEnvironment.getApplication().getContentResolver(),
-          Settings.Global.ADB_ENABLED,
-          adbEnabled ? 1 : 0);
-    }
+    Settings.Global.putInt(
+        RuntimeEnvironment.getApplication().getContentResolver(),
+        Settings.Global.ADB_ENABLED,
+        adbEnabled ? 1 : 0);
     // Support all clients by always setting the Secure version of the setting
     Settings.Secure.putInt(
         RuntimeEnvironment.getApplication().getContentResolver(),
@@ -538,12 +522,10 @@ public class ShadowSettings {
     // This setting moved from Secure to Global in JELLY_BEAN_MR1 and then moved it back to Global
     // in LOLLIPOP. Support all clients by always setting this field on all versions >=
     // JELLY_BEAN_MR1.
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-      Settings.Global.putInt(
-          RuntimeEnvironment.getApplication().getContentResolver(),
-          Settings.Global.INSTALL_NON_MARKET_APPS,
-          installNonMarketApps ? 1 : 0);
-    }
+    Settings.Global.putInt(
+        RuntimeEnvironment.getApplication().getContentResolver(),
+        Settings.Global.INSTALL_NON_MARKET_APPS,
+        installNonMarketApps ? 1 : 0);
     // Always set the Secure version of the setting
     Settings.Secure.putInt(
         RuntimeEnvironment.getApplication().getContentResolver(),
@@ -572,17 +554,102 @@ public class ShadowSettings {
    * <p>This shadow is primarily to support {@link android.provider.DeviceConfig}, which queries
    * {@link Settings.Config}. {@link android.provider.DeviceConfig} is pure Java code so it's not
    * necessary to shadow that directly.
-   *
-   * <p>The underlying implementation calls into a system content provider. Starting in Android U,
-   * the internal logic of Activity is querying DeviceConfig, so to avoid crashes we need to make
-   * DeviceConfig a no-op.
    */
-  @Implements(value = Settings.Config.class, isInAndroidSdk = false)
+  @Implements(value = Settings.Config.class, isInAndroidSdk = false, minSdk = Q)
   public static class ShadowConfig {
+
+    private static final Map<String, String> settings = new ConcurrentHashMap<>();
+
+    @Implementation(maxSdk = Q)
+    protected static boolean putString(
+        ContentResolver cr, String name, String value, boolean makeDefault) {
+      return put(name, value);
+    }
+
+    @Implementation(minSdk = R, maxSdk = TIRAMISU)
+    protected static boolean putString(
+        ContentResolver cr, String namespace, String name, String value, boolean makeDefault) {
+      String key = reflector(SettingsConfigReflector.class).createCompositeName(namespace, name);
+      return put(key, value);
+    }
+
+    @Implementation(minSdk = U.SDK_INT)
+    protected static boolean putString(
+        String namespace, String name, String value, boolean makeDefault) {
+      String key = reflector(SettingsConfigReflector.class).createCompositeName(namespace, name);
+      return put(key, value);
+    }
+
+    @Implementation(maxSdk = TIRAMISU)
+    protected static String getString(ContentResolver cr, String name) {
+      return get(name);
+    }
+
+    @Implementation(minSdk = U.SDK_INT)
+    protected static String getString(String name) {
+      return get(name);
+    }
+
     @Implementation(minSdk = R)
     protected static Map<String, String> getStrings(
         ContentResolver resolver, String namespace, List<String> names) {
-      return ImmutableMap.of();
+
+      Map<String, String> result = new HashMap<>();
+      for (Map.Entry<String, String> entry : settings.entrySet()) {
+        String key = entry.getKey();
+        if (!key.startsWith(namespace + "/")) {
+          continue;
+        }
+        String keyWithoutNamespace = key.substring(namespace.length() + 1);
+        if (names == null || names.isEmpty()) {
+          result.put(keyWithoutNamespace, entry.getValue());
+        } else if (names.contains(keyWithoutNamespace)) {
+          result.put(keyWithoutNamespace, entry.getValue());
+        }
+      }
+      return ImmutableMap.copyOf(result);
+    }
+
+    private static boolean put(String name, String value) {
+      settings.put(name, value);
+      return true;
+    }
+
+    @Implementation(minSdk = R)
+    protected static boolean setStrings(
+        ContentResolver cr, String namespace, Map<String, String> keyValues) {
+
+      synchronized (settings) {
+        settings.entrySet().removeIf(entry -> entry.getKey().startsWith(namespace + "/"));
+        for (Map.Entry<String, String> entry : keyValues.entrySet()) {
+          String key =
+              reflector(SettingsConfigReflector.class)
+                  .createCompositeName(namespace, entry.getKey());
+          put(key, entry.getValue());
+        }
+      }
+      return true;
+    }
+
+    @Implementation(minSdk = U.SDK_INT)
+    protected static boolean deleteString(String namespace, String name) {
+      String key = reflector(SettingsConfigReflector.class).createCompositeName(namespace, name);
+      settings.remove(key);
+      return true;
+    }
+
+    @Implementation(minSdk = TIRAMISU, maxSdk = TIRAMISU)
+    protected static boolean deleteString(ContentResolver resolver, String namespace, String name) {
+      return deleteString(namespace, name);
+    }
+
+    private static String get(String name) {
+      return settings.get(name);
+    }
+
+    @Resetter
+    public static void reset() {
+      settings.clear();
     }
   }
 
@@ -595,5 +662,11 @@ public class ShadowSettings {
   interface SettingsSecureReflector {
     @Static
     int getLocationModeForUser(ContentResolver cr, int userId);
+  }
+
+  @ForType(Settings.Config.class)
+  interface SettingsConfigReflector {
+    @Static
+    String createCompositeName(String namespace, String name);
   }
 }

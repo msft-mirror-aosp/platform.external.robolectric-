@@ -3,7 +3,6 @@ package org.robolectric.shadows;
 import static android.app.usage.UsageStatsManager.INTERVAL_DAILY;
 import static android.app.usage.UsageStatsManager.INTERVAL_WEEKLY;
 import static android.content.Context.USAGE_STATS_SERVICE;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
 import static com.google.common.truth.Truth.assertThat;
@@ -38,7 +37,6 @@ import org.robolectric.shadows.ShadowUsageStatsManager.UsageStatsBuilder;
 
 /** Test for {@link ShadowUsageStatsManager}. */
 @RunWith(AndroidJUnit4.class)
-@Config(minSdk = LOLLIPOP)
 public class ShadowUsageStatsManagerTest {
 
   private static final String TEST_PACKAGE_NAME1 = "com.company1.pkg1";
@@ -342,7 +340,6 @@ public class ShadowUsageStatsManagerTest {
                 pendingIntent1));
   }
 
-
   @Test
   public void queryUsageStats_noStatsAdded() {
     List<UsageStats> results = usageStatsManager.queryUsageStats(INTERVAL_WEEKLY, 0, 3000);
@@ -512,7 +509,7 @@ public class ShadowUsageStatsManagerTest {
   @Test
   @Config(minSdk = Build.VERSION_CODES.Q)
   public void
-  testRegisterUsageSessionObserver_duplicateObserverIds_shouldOverrideExistingObserver() {
+      testRegisterUsageSessionObserver_duplicateObserverIds_shouldOverrideExistingObserver() {
     PendingIntent sessionStepIntent1 =
         PendingIntent.getBroadcast(context, 0, new Intent("SESSION_STEP_ACTION1"), 0);
     PendingIntent sessionEndedIntent1 =

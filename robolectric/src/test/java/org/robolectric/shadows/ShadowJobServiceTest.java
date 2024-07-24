@@ -1,9 +1,9 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static com.google.common.truth.Truth.assertThat;
 import static org.robolectric.Shadows.shadowOf;
 
+import android.app.Notification;
 import android.app.job.JobParameters;
 import android.app.job.JobService;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -13,10 +13,10 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.robolectric.annotation.Config;
+import org.robolectric.versioning.AndroidVersions.U;
 
 /** Robolectric test for {@link ShadowJobService}. */
 @RunWith(AndroidJUnit4.class)
-@Config(minSdk = LOLLIPOP)
 public class ShadowJobServiceTest {
   private JobService jobService;
   @Mock private JobParameters params;
@@ -71,5 +71,16 @@ public class ShadowJobServiceTest {
 
     assertThat(shadow.getIsRescheduleNeeded()).isTrue();
     assertThat(shadow.getIsJobFinished()).isTrue();
+  }
+
+  @Test
+  @Config(minSdk = U.SDK_INT)
+  public void setNotification_succeeds() {
+    // ensure setNotification doesn't crash
+    jobService.setNotification(
+        params,
+        1 /* notificationId */,
+        new Notification(),
+        JobService.JOB_END_NOTIFICATION_POLICY_DETACH);
   }
 }

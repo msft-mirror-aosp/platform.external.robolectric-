@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
@@ -9,6 +7,8 @@ import static android.os.Build.VERSION_CODES.P;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
 import static android.os.Build.VERSION_CODES.S;
+import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static org.robolectric.util.ReflectionHelpers.ClassParameter.from;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -21,6 +21,7 @@ import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioPlaybackConfiguration;
+import android.media.AudioProfile;
 import android.media.AudioRecordingConfiguration;
 import android.media.IPlayer;
 import android.media.PlayerBase;
@@ -31,6 +32,7 @@ import android.os.Parcel;
 import android.view.KeyEvent;
 import com.android.internal.util.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -42,6 +44,7 @@ import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
+import org.robolectric.annotation.Resetter;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.reflector.Constructor;
 import org.robolectric.util.reflector.ForType;
@@ -65,7 +68,8 @@ public class ShadowAudioManager {
           AudioManager.STREAM_RING,
           AudioManager.STREAM_SYSTEM,
           AudioManager.STREAM_VOICE_CALL,
-          AudioManager.STREAM_DTMF);
+          AudioManager.STREAM_DTMF,
+          AudioManager.STREAM_ACCESSIBILITY);
 
   private static final int INVALID_PATCH_HANDLE = -1;
   private static final float MAX_VOLUME_DB = 0;
@@ -83,26 +87,33 @@ public class ShadowAudioManager {
   private final HashSet<AudioManager.AudioPlaybackCallback> audioPlaybackCallbacks =
       new HashSet<>();
   private final HashSet<AudioDeviceCallback> audioDeviceCallbacks = new HashSet<>();
-  private int ringerMode = AudioManager.RINGER_MODE_NORMAL;
-  private int mode = AudioManager.MODE_NORMAL;
-  private boolean bluetoothA2dpOn;
-  private boolean isBluetoothScoOn;
-  private boolean isSpeakerphoneOn;
-  private boolean isMicrophoneMuted = false;
-  private boolean isMusicActive;
-  private boolean wiredHeadsetOn;
-  private boolean isBluetoothScoAvailableOffCall = false;
+  private static int ringerMode = AudioManager.RINGER_MODE_NORMAL;
+  private static int mode = AudioManager.MODE_NORMAL;
+  private static boolean lockMode = false;
+  private static boolean bluetoothA2dpOn;
+  private static boolean isBluetoothScoOn;
+  private static boolean isSpeakerphoneOn;
+  private static boolean isMicrophoneMuted = false;
+  private static boolean isMusicActive;
+  private static boolean wiredHeadsetOn;
+  private static boolean isBluetoothScoAvailableOffCall = false;
   private final Map<String, String> parameters = new HashMap<>();
   private final Map<Integer, Boolean> streamsMuteState = new HashMap<>();
   private final Map<String, AudioPolicy> registeredAudioPolicies = new HashMap<>();
   private int audioSessionIdCounter = 1;
   private final Map<AudioAttributes, ImmutableList<Object>> devicesForAttributes = new HashMap<>();
+  private final List<AudioDeviceInfo> outputDevicesWithDirectProfiles = new ArrayList<>();
   private ImmutableList<Object> defaultDevicesForAttributes = ImmutableList.of();
+  private final Map<AudioAttributes, ImmutableList<AudioDeviceInfo>> audioDevicesForAttributes =
+      new HashMap<>();
   private List<AudioDeviceInfo> inputDevices = new ArrayList<>();
   private List<AudioDeviceInfo> outputDevices = new ArrayList<>();
   private List<AudioDeviceInfo> availableCommunicationDevices = new ArrayList<>();
   private AudioDeviceInfo communicationDevice = null;
+  private static boolean lockCommunicationDevice = false;
   private final List<KeyEvent> dispatchedMediaKeyEvents = new ArrayList<>();
+  private static boolean isHotwordStreamSupportedForLookbackAudio = false;
+  private static boolean isHotwordStreamSupportedWithoutLookbackAudio = false;
 
   public ShadowAudioManager() {
     for (int stream : ALL_STREAMS) {
@@ -208,8 +219,12 @@ public class ShadowAudioManager {
             <= (int) ReflectionHelpers.getStaticField(AudioManager.class, "RINGER_MODE_MAX");
   }
 
+  /** Note that this method can silently fail. See {@link lockMode}. */
   @Implementation
   protected void setMode(int mode) {
+    if (lockMode) {
+      return;
+    }
     int previousMode = this.mode;
     this.mode = mode;
     if (RuntimeEnvironment.getApiLevel() >= S && mode != previousMode) {
@@ -217,11 +232,33 @@ public class ShadowAudioManager {
     }
   }
 
+  @Resetter
+  public static void reset() {
+    ringerMode = AudioManager.RINGER_MODE_NORMAL;
+    mode = AudioManager.MODE_NORMAL;
+    lockMode = false;
+    bluetoothA2dpOn = false;
+    isBluetoothScoOn = false;
+    isSpeakerphoneOn = false;
+    isMicrophoneMuted = false;
+    isMusicActive = false;
+    wiredHeadsetOn = false;
+    isBluetoothScoAvailableOffCall = false;
+    lockCommunicationDevice = false;
+    isHotwordStreamSupportedForLookbackAudio = false;
+    isHotwordStreamSupportedWithoutLookbackAudio = false;
+  }
+
   private void dispatchModeChangedListeners(int newMode) {
     Object modeDispatcherStub =
         reflector(ModeDispatcherStubReflector.class).newModeDispatcherStub(realAudioManager);
     reflector(ModeDispatcherStubReflector.class, modeDispatcherStub)
         .dispatchAudioModeChanged(newMode);
+  }
+
+  /** Sets whether subsequent calls to {@link setMode} will succeed or not. */
+  public void lockMode(boolean lockMode) {
+    this.lockMode = lockMode;
   }
 
   @Implementation
@@ -236,6 +273,7 @@ public class ShadowAudioManager {
 
     void dispatchAudioModeChanged(int newMode);
   }
+
   public void setStreamMaxVolume(int streamMaxVolume) {
     streamStatus.forEach((key, value) -> value.setMaxVolume(streamMaxVolume));
   }
@@ -448,6 +486,27 @@ public class ShadowAudioManager {
   }
 
   /**
+   * Returns the audio devices that would be used for the routing of the given audio attributes.
+   *
+   * <p>Devices can be added with {@link #setAudioDevicesForAttributes}. Note that {@link
+   * #setDevicesForAttributes} and {@link #setDefaultDevicesForAttributes} have no effect on the
+   * return value of this method.
+   */
+  @Implementation(minSdk = TIRAMISU)
+  @NonNull
+  protected List<AudioDeviceInfo> getAudioDevicesForAttributes(
+      @NonNull AudioAttributes attributes) {
+    ImmutableList<AudioDeviceInfo> devices = audioDevicesForAttributes.get(attributes);
+    return devices == null ? ImmutableList.of() : devices;
+  }
+
+  /** Sets the audio devices returned from {@link #getAudioDevicesForAttributes}. */
+  public void setAudioDevicesForAttributes(
+      @NonNull AudioAttributes attributes, @NonNull ImmutableList<AudioDeviceInfo> devices) {
+    audioDevicesForAttributes.put(attributes, devices);
+  }
+
+  /**
    * Sets the list of connected input devices represented by {@link AudioDeviceInfo}.
    *
    * <p>The previous list of input devices is replaced and no notifications of the list of {@link
@@ -582,6 +641,8 @@ public class ShadowAudioManager {
    * @see #removeInputDevice(AudioDeviceInfo, boolean)
    * @see #removeOutputDevice(AudioDeviceInfo, boolean)
    * @see #removeAvailableCommunicationDevice(AudioDeviceInfo, boolean)
+   * @see #addOutputDeviceWithDirectProfiles(AudioDeviceInfo)
+   * @see #removeOutputDeviceWithDirectProfiles(AudioDeviceInfo)
    */
   @Implementation(minSdk = M)
   protected void registerAudioDeviceCallback(AudioDeviceCallback callback, Handler handler) {
@@ -600,6 +661,8 @@ public class ShadowAudioManager {
    * @see #removeInputDevice(AudioDeviceInfo, boolean)
    * @see #removeOutputDevice(AudioDeviceInfo, boolean)
    * @see #removeAvailableCommunicationDevice(AudioDeviceInfo, boolean)
+   * @see #addOutputDeviceWithDirectProfiles(AudioDeviceInfo)
+   * @see #removeOutputDeviceWithDirectProfiles(AudioDeviceInfo)
    */
   @Implementation(minSdk = M)
   protected void unregisterAudioDeviceCallback(AudioDeviceCallback callback) {
@@ -625,10 +688,18 @@ public class ShadowAudioManager {
     return outputDevices;
   }
 
+  /** Note that this method can silently fail. See {@link lockCommunicationDevice}. */
   @Implementation(minSdk = S)
   protected boolean setCommunicationDevice(AudioDeviceInfo communicationDevice) {
-    this.communicationDevice = communicationDevice;
-    return true;
+    if (!lockCommunicationDevice) {
+      this.communicationDevice = communicationDevice;
+    }
+    return !lockCommunicationDevice;
+  }
+
+  /** Sets whether subsequent calls to {@link setCommunicationDevice} will succeed. */
+  public void lockCommunicationDevice(boolean lockCommunicationDevice) {
+    this.lockCommunicationDevice = lockCommunicationDevice;
   }
 
   @Implementation(minSdk = S)
@@ -644,6 +715,22 @@ public class ShadowAudioManager {
   @Implementation(minSdk = S)
   protected List<AudioDeviceInfo> getAvailableCommunicationDevices() {
     return availableCommunicationDevices;
+  }
+
+  @Implementation(minSdk = UPSIDE_DOWN_CAKE)
+  protected boolean isHotwordStreamSupported(boolean lookbackAudio) {
+    if (lookbackAudio) {
+      return isHotwordStreamSupportedForLookbackAudio;
+    }
+    return isHotwordStreamSupportedWithoutLookbackAudio;
+  }
+
+  public void setHotwordStreamSupported(boolean lookbackAudio, boolean isSupported) {
+    if (lookbackAudio) {
+      isHotwordStreamSupportedForLookbackAudio = isSupported;
+    } else {
+      isHotwordStreamSupportedWithoutLookbackAudio = isSupported;
+    }
   }
 
   @Implementation(minSdk = M)
@@ -862,11 +949,52 @@ public class ShadowAudioManager {
   }
 
   /**
+   * Returns the list of profiles supported for direct playback.
+   *
+   * <p>In this shadow-implementation the list returned are profiles set through {@link
+   * #addOutputDeviceWithDirectProfiles(AudioDeviceInfo)}, {@link
+   * #removeOutputDeviceWithDirectProfiles(AudioDeviceInfo)}.
+   */
+  @Implementation(minSdk = TIRAMISU)
+  @NonNull
+  protected List<AudioProfile> getDirectProfilesForAttributes(@NonNull AudioAttributes attributes) {
+    ImmutableSet.Builder<AudioProfile> audioProfiles = new ImmutableSet.Builder<>();
+    for (int i = 0; i < outputDevicesWithDirectProfiles.size(); i++) {
+      audioProfiles.addAll(outputDevicesWithDirectProfiles.get(i).getAudioProfiles());
+    }
+    return new ArrayList<>(audioProfiles.build());
+  }
+
+  /**
+   * Adds an output {@link AudioDeviceInfo device} with direct profiles and notifies the list of
+   * {@link AudioDeviceCallback} if the device was not present before.
+   */
+  public void addOutputDeviceWithDirectProfiles(AudioDeviceInfo outputDevice) {
+    boolean changed =
+        !this.outputDevicesWithDirectProfiles.contains(outputDevice)
+            && this.outputDevicesWithDirectProfiles.add(outputDevice);
+    if (changed) {
+      notifyAudioDeviceCallbacks(ImmutableList.of(outputDevice), /* added= */ true);
+    }
+  }
+
+  /**
+   * Removes an output {@link AudioDeviceInfo device} with direct profiles and notifies the list of
+   * {@link AudioDeviceCallback} if the device was present before.
+   */
+  public void removeOutputDeviceWithDirectProfiles(AudioDeviceInfo outputDevice) {
+    boolean changed = this.outputDevicesWithDirectProfiles.remove(outputDevice);
+    if (changed) {
+      notifyAudioDeviceCallbacks(ImmutableList.of(outputDevice), /* added= */ false);
+    }
+  }
+
+  /**
    * Provides a mock like interface for the {@link AudioManager#generateAudioSessionId} method by
    * returning positive distinct values, or {@link AudioManager#ERROR} if all possible values have
    * already been returned.
    */
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected int generateAudioSessionId() {
     if (audioSessionIdCounter < 0) {
       return AudioManager.ERROR;
@@ -897,7 +1025,7 @@ public class ShadowAudioManager {
    * routed to a media app, this shadow method only records the events to be verified through {@link
    * #getDispatchedMediaKeyEvents()}.
    */
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected void dispatchMediaKeyEvent(KeyEvent keyEvent) {
     if (keyEvent == null) {
       throw new NullPointerException("keyEvent is null");

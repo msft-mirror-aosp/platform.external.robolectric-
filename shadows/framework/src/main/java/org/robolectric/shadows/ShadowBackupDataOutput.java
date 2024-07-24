@@ -1,8 +1,7 @@
 package org.robolectric.shadows;
 
+import android.annotation.Nullable;
 import android.app.backup.BackupDataOutput;
-import android.os.Build.VERSION_CODES;
-import androidx.annotation.Nullable;
 import com.google.common.collect.ImmutableList;
 import java.io.FileDescriptor;
 import java.util.ArrayList;
@@ -15,7 +14,7 @@ import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.ForType;
 
 /** Shadow for BackupDataOutput. */
-@Implements(value = BackupDataOutput.class, minSdk = VERSION_CODES.LOLLIPOP)
+@Implements(value = BackupDataOutput.class)
 public class ShadowBackupDataOutput {
 
   protected static final String KEY_PREFIX_JOINER = ":";

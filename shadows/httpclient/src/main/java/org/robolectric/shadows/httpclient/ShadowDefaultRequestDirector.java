@@ -84,21 +84,21 @@ public class ShadowDefaultRequestDirector {
     this.httpParams = params;
 
     try {
-      redirector = new org.robolectric.shadows.httpclient.DefaultRequestDirector(
-          log,
-          requestExec,
-          conman,
-          reustrat,
-          kastrat,
-          rouplan,
-          httpProcessor,
-          retryHandler,
-          redirectHandler,
-          targetAuthHandler,
-          proxyAuthHandler,
-          userTokenHandler,
-          params
-      );
+      redirector =
+          new org.robolectric.shadows.httpclient.DefaultRequestDirector(
+              log,
+              requestExec,
+              conman,
+              reustrat,
+              kastrat,
+              rouplan,
+              httpProcessor,
+              retryHandler,
+              redirectHandler,
+              targetAuthHandler,
+              proxyAuthHandler,
+              userTokenHandler,
+              params);
     } catch (IllegalArgumentException ignored) {
       FakeHttp.getFakeHttpLayer().interceptHttpRequests(true);
     }
@@ -138,12 +138,16 @@ public class ShadowDefaultRequestDirector {
    * Get the sent {@link HttpRequest} for the given index.
    *
    * @param index The index
-   * @deprecated Use {@link FakeHttp#getSentHttpRequestInfo(int)} instead.)
+   * @deprecated Use {@link FakeHttp#getSentHttpRequestInfo(int)} instead. This method will be
+   *     removed in Robolectric 4.13.
    * @return HttpRequest
    */
   @Deprecated
+  @InlineMe(
+      replacement = "FakeHttp.getFakeHttpLayer().getSentHttpRequestInfo(index).getHttpRequest()",
+      imports = "org.robolectric.shadows.httpclient.FakeHttp")
   public static HttpRequest getSentHttpRequest(int index) {
-    return getSentHttpRequestInfo(index).getHttpRequest();
+    return FakeHttp.getFakeHttpLayer().getSentHttpRequestInfo(index).getHttpRequest();
   }
 
   public static HttpRequest getLatestSentHttpRequest() {
@@ -159,14 +163,15 @@ public class ShadowDefaultRequestDirector {
    * Get the sent {@link HttpRequestInfo} for the given index.
    *
    * @param index The index
-   * @deprecated Use {@link FakeHttp#getSentHttpRequest(int)} instead.)
+   * @deprecated Use {@link FakeHttp#getSentHttpRequest(int)} instead. This method will be removed
+   *     in Robolectric 4.13.
    * @return HttpRequestInfo
    */
   @Deprecated
   @InlineMe(
       replacement = "FakeHttp.getFakeHttpLayer().getSentHttpRequestInfo(index)",
       imports = "org.robolectric.shadows.httpclient.FakeHttp")
-  public static final HttpRequestInfo getSentHttpRequestInfo(int index) {
+  public static HttpRequestInfo getSentHttpRequestInfo(int index) {
     return FakeHttp.getFakeHttpLayer().getSentHttpRequestInfo(index);
   }
 
@@ -175,9 +180,11 @@ public class ShadowDefaultRequestDirector {
       HttpHost httpHost, HttpRequest httpRequest, HttpContext httpContext)
       throws HttpException, IOException {
     if (FakeHttp.getFakeHttpLayer().isInterceptingHttpRequests()) {
-      return FakeHttp.getFakeHttpLayer().emulateRequest(httpHost, httpRequest, httpContext, realObject);
+      return FakeHttp.getFakeHttpLayer()
+          .emulateRequest(httpHost, httpRequest, httpContext, realObject);
     } else {
-      FakeHttp.getFakeHttpLayer().addRequestInfo(new HttpRequestInfo(httpRequest, httpHost, httpContext, redirector));
+      FakeHttp.getFakeHttpLayer()
+          .addRequestInfo(new HttpRequestInfo(httpRequest, httpHost, httpContext, redirector));
       HttpResponse response = redirector.execute(httpHost, httpRequest, httpContext);
 
       if (FakeHttp.getFakeHttpLayer().isInterceptingResponseContent()) {

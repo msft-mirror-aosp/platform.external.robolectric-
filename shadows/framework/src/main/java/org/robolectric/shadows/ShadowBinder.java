@@ -1,6 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
 import static android.os.Build.VERSION_CODES.Q;
 
 import android.os.Binder;
@@ -14,8 +13,7 @@ import org.robolectric.annotation.Resetter;
 
 @Implements(Binder.class)
 public class ShadowBinder {
-  @RealObject
-  Binder realObject;
+  @RealObject Binder realObject;
 
   private static Integer callingUid;
   private static Integer callingPid;
@@ -24,26 +22,26 @@ public class ShadowBinder {
   @Implementation
   protected boolean transact(int code, Parcel data, Parcel reply, int flags)
       throws RemoteException {
-   if (data != null) {
-     data.setDataPosition(0);
-   }
+    if (data != null) {
+      data.setDataPosition(0);
+    }
 
-   boolean result;
-   try {
-     result = new ShadowBinderBridge(realObject).onTransact(code, data, reply, flags);
-   } catch (RemoteException e) {
-     throw e;
-   } catch (Exception e) {
-     result = true;
-     if (reply != null) {
-       reply.writeException(e);
-     }
-   }
+    boolean result;
+    try {
+      result = new ShadowBinderBridge(realObject).onTransact(code, data, reply, flags);
+    } catch (RemoteException e) {
+      throw e;
+    } catch (Exception e) {
+      result = true;
+      if (reply != null) {
+        reply.writeException(e);
+      }
+    }
 
-   if (reply != null) {
-     reply.setDataPosition(0);
-   }
-   return result;
+    if (reply != null) {
+      reply.setDataPosition(0);
+    }
+    return result;
   }
 
   @Implementation
@@ -80,7 +78,7 @@ public class ShadowBinder {
     throw new IllegalStateException("Thread is not in a binder transcation");
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected static UserHandle getCallingUserHandle() {
     if (callingUserHandle != null) {
       return callingUserHandle;

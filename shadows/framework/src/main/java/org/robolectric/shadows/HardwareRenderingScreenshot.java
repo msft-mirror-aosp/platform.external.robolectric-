@@ -1,22 +1,27 @@
 package org.robolectric.shadows;
 
+import static android.os.Build.VERSION_CODES.P;
+import static android.os.Build.VERSION_CODES.Q;
+
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.HardwareRenderer;
 import android.graphics.PixelFormat;
 import android.graphics.RenderNode;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
-import android.os.Build.VERSION;
-import android.os.Build.VERSION_CODES;
 import android.util.DisplayMetrics;
 import android.view.Surface;
 import android.view.View;
+import android.view.ViewRootImpl;
 import com.android.internal.R;
-import java.nio.IntBuffer;
+import com.google.common.base.Preconditions;
+import java.util.WeakHashMap;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.util.ReflectionHelpers;
 
@@ -26,7 +31,12 @@ import org.robolectric.util.ReflectionHelpers;
  */
 public final class HardwareRenderingScreenshot {
 
-  static final String USE_HARDWARE_RENDERER_NATIVE_ENV = "robolectric.screenshot.hwrdr.native";
+  // It is important to reuse HardwareRenderer objects, and ensure that after a HardwareRenderer is
+  // collected, no associated views in the same View hierarchy will be rendered as well.
+  private static final WeakHashMap<ViewRootImpl, HardwareRenderer> hardwareRenderers =
+      new WeakHashMap<>();
+
+  static final String PIXEL_COPY_RENDER_MODE = "robolectric.pixelCopyRenderMode";
 
   private HardwareRenderingScreenshot() {}
 
@@ -35,15 +45,16 @@ public final class HardwareRenderingScreenshot {
    * the presence of the {@link #USE_HARDWARE_RENDERER_NATIVE_ENV} property, and the {@link
    * GraphicsMode}.
    */
-  static boolean canTakeScreenshot() {
-    return VERSION.SDK_INT >= VERSION_CODES.S
-        && Boolean.getBoolean(HardwareRenderingScreenshot.USE_HARDWARE_RENDERER_NATIVE_ENV)
-        && ShadowView.useRealGraphics();
+  static boolean canTakeScreenshot(View view) {
+    return RuntimeEnvironment.getApiLevel() >= P
+        && "hardware".equalsIgnoreCase(System.getProperty(PIXEL_COPY_RENDER_MODE, ""))
+        && ShadowView.useRealGraphics()
+        && view.canHaveDisplayList();
   }
 
   /**
-   * Generates a bitmap given the current view using HardwareRenderer with native graphics calls.
-   * Requires API 31+ (S).
+   * Generates a bitmap given the current view using hardware accelerated canvases with native
+   * graphics calls. Requires API 28+ (S).
    *
    * <p>This code mirrors the behavior of LayoutLib's RenderSessionImpl.renderAndBuildResult(); see
    * https://googleplex-android.googlesource.com/platform/frameworks/layoutlib/+/refs/heads/master-layoutlib-native/bridge/src/com/android/layoutlib/bridge/impl/RenderSessionImpl.java#573
@@ -54,38 +65,29 @@ public final class HardwareRenderingScreenshot {
 
     try (ImageReader imageReader =
         ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)) {
-      // Note on pixel format:
-      // - Android Bitmap requires ARGB_8888.
-      // - ImageReader is configured as RGBA_8888.
-      // - However the native libs/hwui/pipeline/skia/SkiaHostPipeline.cpp always treats
-      //   the buffer as BGRA_8888, thus matching what the Android Bitmap object requires.
-
-      HardwareRenderer renderer = new HardwareRenderer();
+      ViewRootImpl viewRootImpl = view.getViewRootImpl();
+      Preconditions.checkNotNull(viewRootImpl, "View not attached");
       Surface surface = imageReader.getSurface();
-      renderer.setSurface(surface);
+
+      if (RuntimeEnvironment.getApiLevel() >= Q) {
+        // HardwareRenderer is only available on API 29+ (Q).
+        HardwareRenderer renderer =
+            hardwareRenderers.computeIfAbsent(viewRootImpl, k -> new HardwareRenderer());
+        renderer.setSurface(surface);
+        setupRendererShadowProperties(renderer, view);
+        RenderNode node = getRenderNode(view);
+        renderer.setContentRoot(node);
+        renderer.createRenderRequest().syncAndDraw();
+      } else {
+        // Note this API does not set any light source properties, so it will not render
+        // drop shadows.
+        Canvas canvas = surface.lockHardwareCanvas();
+        view.draw(canvas);
+        surface.unlockCanvasAndPost(canvas);
+      }
       Image nativeImage = imageReader.acquireNextImage();
-
-      setupRendererShadowProperties(renderer, view);
-
-      RenderNode node = getRenderNode(view);
-      renderer.setContentRoot(node);
-
-      renderer.createRenderRequest().syncAndDraw();
-
-      int[] renderPixels = new int[width * height];
-
       Plane[] planes = nativeImage.getPlanes();
-      IntBuffer srcBuff = planes[0].getBuffer().asIntBuffer();
-      srcBuff.get(renderPixels);
-
-      destBitmap.setPixels(
-          renderPixels,
-          /* offset= */ 0,
-          /* stride= */ width,
-          /* x= */ 0,
-          /* y= */ 0,
-          width,
-          height);
+      destBitmap.copyPixelsFromBuffer(planes[0].getBuffer());
       surface.release();
     }
   }

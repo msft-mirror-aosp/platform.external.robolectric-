@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [ google ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -15,12 +19,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'adopt'
           java-version: 17
 
-      - uses: gradle/gradle-build-action@v2.9.0
+      - uses: gradle/actions/setup-gradle@v3
 
       - name: Build
         run: |
@@ -37,4 +41,13 @@ jobs:
             -Drobolectric.enabledSdks=34 \
             -Dorg.gradle.workers.max=2 \
             -x :integration_tests:nativegraphics:test \
+            -x :integration_tests:dependency-on-stubs:test \
           )
+
+      - name: SdkCompat tests
+        run: |
+          # `SdkCompat tests` is run as a separate step because it has to run on all SDK levels, and
+          # the `Integration tests` step only runs on a single SDK level.
+          SKIP_ERRORPRONE=true SKIP_JAVADOC=true \
+          ./gradlew :integration_tests:dependency-on-stubs:test --info --stacktrace --continue --no-watch-fs \
+          -Drobolectric.alwaysIncludeVariantMarkersInTestName=true \

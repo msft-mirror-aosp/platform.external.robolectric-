@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.KITKAT;
-
 import android.content.Context;
 import android.net.wifi.p2p.WifiP2pGroup;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -40,7 +38,7 @@ public class ShadowWifiP2pManager {
     return groupInfoListener;
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected void setWifiP2pChannels(
       Channel c, int listeningChannel, int operatingChannel, ActionListener al) {
     Preconditions.checkNotNull(c);
@@ -66,17 +64,18 @@ public class ShadowWifiP2pManager {
       return;
     }
 
-    handler.post(new Runnable() {
-      @Override
-      public void run() {
-        if (nextActionFailure == -1) {
-          al.onSuccess();
-        } else {
-          al.onFailure(nextActionFailure);
-        }
-        nextActionFailure = NO_FAILURE;
-      }
-    });
+    handler.post(
+        new Runnable() {
+          @Override
+          public void run() {
+            if (nextActionFailure == -1) {
+              al.onSuccess();
+            } else {
+              al.onFailure(nextActionFailure);
+            }
+            nextActionFailure = NO_FAILURE;
+          }
+        });
   }
 
   @Implementation
@@ -85,12 +84,13 @@ public class ShadowWifiP2pManager {
       return;
     }
 
-    handler.post(new Runnable() {
-      @Override
-      public void run() {
-        gl.onGroupInfoAvailable(p2pGroupmap.get(c));
-      }
-    });
+    handler.post(
+        new Runnable() {
+          @Override
+          public void run() {
+            gl.onGroupInfoAvailable(p2pGroupmap.get(c));
+          }
+        });
   }
 
   @Implementation

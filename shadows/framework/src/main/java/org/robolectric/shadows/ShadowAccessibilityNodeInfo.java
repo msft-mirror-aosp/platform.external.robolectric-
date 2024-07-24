@@ -1,13 +1,11 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.N;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.P;
+import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static org.robolectric.RuntimeEnvironment.getApiLevel;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -44,7 +42,7 @@ import org.robolectric.util.reflector.Static;
  * Properties of {@link android.view.accessibility.AccessibilityNodeInfo} that are normally locked
  * may be changed using test APIs.
  *
- * Calls to {@code obtain()} and {@code recycle()} are tracked to help spot bugs.
+ * <p>Calls to {@code obtain()} and {@code recycle()} are tracked to help spot bugs.
  */
 @Implements(AccessibilityNodeInfo.class)
 public class ShadowAccessibilityNodeInfo {
@@ -58,27 +56,26 @@ public class ShadowAccessibilityNodeInfo {
   public static final Parcelable.Creator<AccessibilityNodeInfo> CREATOR =
       new Parcelable.Creator<AccessibilityNodeInfo>() {
 
-    @Override
-    public AccessibilityNodeInfo createFromParcel(Parcel source) {
-      return obtain(orderedInstances.get(source.readInt()).mInfo);
-    }
+        @Override
+        public AccessibilityNodeInfo createFromParcel(Parcel source) {
+          return obtain(orderedInstances.get(source.readInt()).mInfo);
+        }
 
-    @Override
-    public AccessibilityNodeInfo[] newArray(int size) {
-      return new AccessibilityNodeInfo[size];
-    }};
+        @Override
+        public AccessibilityNodeInfo[] newArray(int size) {
+          return new AccessibilityNodeInfo[size];
+        }
+      };
 
   private static int sAllocationCount = 0;
 
   private static final int PASTEABLE_MASK = 0x00000040;
 
-
   private static final int TEXT_SELECTION_SETABLE_MASK = 0x00000100;
 
   /**
-   * Uniquely identifies the origin of the AccessibilityNodeInfo for equality
-   * testing. Two instances that come from the same node info should have the
-   * same ID.
+   * Uniquely identifies the origin of the AccessibilityNodeInfo for equality testing. Two instances
+   * that come from the same node info should have the same ID.
    */
   private long mOriginNodeId;
 
@@ -100,14 +97,13 @@ public class ShadowAccessibilityNodeInfo {
 
   private AccessibilityWindowInfo accessibilityWindowInfo;
 
-  private AccessibilityNodeInfo traversalAfter; //22
+  private AccessibilityNodeInfo traversalAfter; // 22
 
-  private AccessibilityNodeInfo traversalBefore; //22
+  private AccessibilityNodeInfo traversalBefore; // 22
 
   private OnPerformActionListener actionListener;
 
-  @RealObject
-  private AccessibilityNodeInfo realAccessibilityNodeInfo;
+  @RealObject private AccessibilityNodeInfo realAccessibilityNodeInfo;
 
   @ReflectorObject AccessibilityNodeInfoReflector accessibilityNodeInfoReflector;
 
@@ -175,12 +171,10 @@ public class ShadowAccessibilityNodeInfo {
   }
 
   /**
-   * Check for leaked objects that were {@code obtain}ed but never
-   * {@code recycle}d.
+   * Check for leaked objects that were {@code obtain}ed but never {@code recycle}d.
    *
-   * @param printUnrecycledNodesToSystemErr - if true, stack traces of calls
-   *        to {@code obtain} that lack matching calls to {@code recycle} are
-   *        dumped to System.err.
+   * @param printUnrecycledNodesToSystemErr - if true, stack traces of calls to {@code obtain} that
+   *     lack matching calls to {@code recycle} are dumped to System.err.
    * @return {@code true} if there are unrecycled nodes
    */
   public static boolean areThereUnrecycledNodes(boolean printUnrecycledNodesToSystemErr) {
@@ -201,8 +195,8 @@ public class ShadowAccessibilityNodeInfo {
   }
 
   /**
-   * Clear list of obtained instance objects. {@code areThereUnrecycledNodes}
-   * will always return false if called immediately afterwards.
+   * Clear list of obtained instance objects. {@code areThereUnrecycledNodes} will always return
+   * false if called immediately afterwards.
    */
   @Resetter
   public static void resetObtainedInstances() {
@@ -279,9 +273,9 @@ public class ShadowAccessibilityNodeInfo {
     return obtain(parent);
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected boolean refresh() {
-      return refreshReturnValue;
+    return refreshReturnValue;
   }
 
   public void setRefreshReturnValue(boolean refreshReturnValue) {
@@ -316,7 +310,7 @@ public class ShadowAccessibilityNodeInfo {
     return text;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected AccessibilityNodeInfo getLabelFor() {
     if (labelFor == null) {
       return null;
@@ -333,7 +327,7 @@ public class ShadowAccessibilityNodeInfo {
     labelFor = obtain(info);
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR1)
+  @Implementation
   protected AccessibilityNodeInfo getLabeledBy() {
     if (labeledBy == null) {
       return null;
@@ -364,15 +358,15 @@ public class ShadowAccessibilityNodeInfo {
     if (this.traversalAfter != null) {
       this.traversalAfter.recycle();
     }
-    
+
     this.traversalAfter = obtain(view);
   }
 
   /**
    * Sets the view whose node is visited after this one in accessibility traversal.
    *
-   * This may be useful for configuring traversal order in tests before the corresponding
-   * views have been inflated.
+   * <p>This may be useful for configuring traversal order in tests before the corresponding views
+   * have been inflated.
    *
    * @param info The previous node.
    * @see #getTraversalAfter()
@@ -406,8 +400,8 @@ public class ShadowAccessibilityNodeInfo {
   /**
    * Sets the view before whose node this one should be visited during traversal.
    *
-   * This may be useful for configuring traversal order in tests before the corresponding
-   * views have been inflated.
+   * <p>This may be useful for configuring traversal order in tests before the corresponding views
+   * have been inflated.
    *
    * @param info The view providing the preceding node.
    * @see #getTraversalBefore()
@@ -430,7 +424,7 @@ public class ShadowAccessibilityNodeInfo {
     this.view = root;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected AccessibilityWindowInfo getWindow() {
     return accessibilityWindowInfo;
   }
@@ -494,8 +488,7 @@ public class ShadowAccessibilityNodeInfo {
   }
 
   /**
-   * Add a child node to this one. Also initializes the parent field of the
-   * child.
+   * Add a child node to this one. Also initializes the parent field of the child.
    *
    * @param child The node to be added as a child.
    */
@@ -575,13 +568,8 @@ public class ShadowAccessibilityNodeInfo {
     newShadow.labeledBy = (labeledBy == null) ? null : obtain(labeledBy);
     newShadow.view = view;
     newShadow.actionListener = actionListener;
-    if (getApiLevel() >= LOLLIPOP) {
-      newShadow.accessibilityNodeInfoReflector.setActionsList(
-          new ArrayList<>(realAccessibilityNodeInfo.getActionList()));
-    } else {
-      newShadow.accessibilityNodeInfoReflector.setActionsMask(
-          realAccessibilityNodeInfo.getActions());
-    }
+    newShadow.accessibilityNodeInfoReflector.setActionsList(
+        new ArrayList<>(realAccessibilityNodeInfo.getActionList()));
 
     if (children != null) {
       newShadow.children = new ArrayList<>();
@@ -593,29 +581,24 @@ public class ShadowAccessibilityNodeInfo {
     newShadow.refreshReturnValue = refreshReturnValue;
     newInfo.setMovementGranularities(realAccessibilityNodeInfo.getMovementGranularities());
     newInfo.setPackageName(realAccessibilityNodeInfo.getPackageName());
-    if (getApiLevel() >= JELLY_BEAN_MR2) {
-      newInfo.setViewIdResourceName(realAccessibilityNodeInfo.getViewIdResourceName());
-      newInfo.setTextSelection(
-          realAccessibilityNodeInfo.getTextSelectionStart(),
-          realAccessibilityNodeInfo.getTextSelectionEnd());
-    }
-    if (getApiLevel() >= KITKAT) {
-      newInfo.setCollectionInfo(realAccessibilityNodeInfo.getCollectionInfo());
-      newInfo.setCollectionItemInfo(realAccessibilityNodeInfo.getCollectionItemInfo());
-      newInfo.setInputType(realAccessibilityNodeInfo.getInputType());
-      newInfo.setLiveRegion(realAccessibilityNodeInfo.getLiveRegion());
-      newInfo.setRangeInfo(realAccessibilityNodeInfo.getRangeInfo());
-      newShadow.realAccessibilityNodeInfo.getExtras().putAll(realAccessibilityNodeInfo.getExtras());
-    }
-    if (getApiLevel() >= LOLLIPOP) {
-      newInfo.setMaxTextLength(realAccessibilityNodeInfo.getMaxTextLength());
-      newInfo.setError(realAccessibilityNodeInfo.getError());
-    }
+    newInfo.setViewIdResourceName(realAccessibilityNodeInfo.getViewIdResourceName());
+    newInfo.setTextSelection(
+        realAccessibilityNodeInfo.getTextSelectionStart(),
+        realAccessibilityNodeInfo.getTextSelectionEnd());
+    newInfo.setCollectionInfo(realAccessibilityNodeInfo.getCollectionInfo());
+    newInfo.setCollectionItemInfo(realAccessibilityNodeInfo.getCollectionItemInfo());
+    newInfo.setInputType(realAccessibilityNodeInfo.getInputType());
+    newInfo.setLiveRegion(realAccessibilityNodeInfo.getLiveRegion());
+    newInfo.setRangeInfo(realAccessibilityNodeInfo.getRangeInfo());
+    newShadow.realAccessibilityNodeInfo.getExtras().putAll(realAccessibilityNodeInfo.getExtras());
+    newInfo.setMaxTextLength(realAccessibilityNodeInfo.getMaxTextLength());
+    newInfo.setError(realAccessibilityNodeInfo.getError());
+
     if (getApiLevel() >= LOLLIPOP_MR1) {
       newShadow.traversalAfter = (traversalAfter == null) ? null : obtain(traversalAfter);
       newShadow.traversalBefore = (traversalBefore == null) ? null : obtain(traversalBefore);
     }
-    if ((getApiLevel() >= LOLLIPOP) && (accessibilityWindowInfo != null)) {
+    if (accessibilityWindowInfo != null) {
       newShadow.accessibilityWindowInfo =
           ShadowAccessibilityWindowInfo.obtain(accessibilityWindowInfo);
     }
@@ -629,13 +612,19 @@ public class ShadowAccessibilityNodeInfo {
       newInfo.setTooltipText(realAccessibilityNodeInfo.getTooltipText());
       newInfo.setPaneTitle(realAccessibilityNodeInfo.getPaneTitle());
     }
+    if (getApiLevel() >= R) {
+      newInfo.setStateDescription(realAccessibilityNodeInfo.getStateDescription());
+    }
+    if (getApiLevel() >= UPSIDE_DOWN_CAKE) {
+      newInfo.setContainerTitle(realAccessibilityNodeInfo.getContainerTitle());
+    }
 
     return newInfo;
   }
 
   /**
-   * Private class to keep different nodes referring to the same view straight
-   * in the mObtainedInstances map.
+   * Private class to keep different nodes referring to the same view straight in the
+   * mObtainedInstances map.
    */
   private static class StrictEqualityNodeWrapper {
     public final AccessibilityNodeInfo mInfo;

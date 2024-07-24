@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
-
 import com.android.internal.util.VirtualRefBasePtr;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
@@ -20,7 +18,7 @@ public class ShadowVirtualRefBasePtr {
     return clazz.cast(NATIVE_REGISTRY.getNativeObject(nativePtr).nativeThing);
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected static synchronized void nIncStrong(long ptr) {
     if (ptr == 0) {
       return;
@@ -28,7 +26,7 @@ public class ShadowVirtualRefBasePtr {
     NATIVE_REGISTRY.getNativeObject(ptr).incr();
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected static synchronized void nDecStrong(long ptr) {
     if (ptr == 0) {
       return;

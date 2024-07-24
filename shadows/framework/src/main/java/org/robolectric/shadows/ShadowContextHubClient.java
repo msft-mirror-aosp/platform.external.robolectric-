@@ -2,17 +2,18 @@ package org.robolectric.shadows;
 
 import static org.robolectric.util.reflector.Reflector.reflector;
 
+import android.annotation.RequiresApi;
 import android.annotation.TargetApi;
 import android.hardware.location.ContextHubClient;
 import android.hardware.location.ContextHubInfo;
 import android.hardware.location.ContextHubTransaction;
 import android.hardware.location.NanoAppMessage;
 import android.os.Build.VERSION_CODES;
-import androidx.annotation.RequiresApi;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.HiddenApi;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
@@ -30,6 +31,10 @@ public class ShadowContextHubClient {
   @Implementation(minSdk = VERSION_CODES.P)
   @HiddenApi
   protected int sendMessageToNanoApp(NanoAppMessage message) {
+    if (!ShadowInstrumentation.hasRequiredPermission(
+        RuntimeEnvironment.getApplication(), android.Manifest.permission.ACCESS_CONTEXT_HUB)) {
+      throw new SecurityException("ShadowContextHubClient does not have permission");
+    }
     if (isClosed()) {
       return ContextHubTransaction.RESULT_FAILED_UNKNOWN;
     }

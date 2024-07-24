@@ -1,9 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.KITKAT;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
@@ -122,7 +118,7 @@ public class ShadowEnvironment {
     return EXTERNAL_CACHE_DIR.toFile();
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected static File[] buildExternalStorageAppCacheDirs(String packageName) {
     Path externalStorageDirectoryPath = getExternalStorageDirectory().toPath();
     // Add cache directory in path.
@@ -137,11 +133,6 @@ public class ShadowEnvironment {
       throw new RuntimeException(e);
     }
     return new File[] {path.toFile()};
-  }
-
-  @Implementation(maxSdk = JELLY_BEAN_MR2)
-  protected static File getExternalStorageAppCacheDirectory(String packageName) {
-    return buildExternalStorageAppCacheDirs(packageName)[0];
   }
 
   /**
@@ -199,7 +190,7 @@ public class ShadowEnvironment {
     return exists != null ? exists : false;
   }
 
-  @Implementation(minSdk = KITKAT)
+  @Implementation
   protected static String getStorageState(File directory) {
     Path directoryPath = directory.toPath();
     for (Map.Entry<Path, String> entry : storageState.entrySet()) {
@@ -210,7 +201,7 @@ public class ShadowEnvironment {
     return null;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected static String getExternalStorageState(File directory) {
     Path directoryPath = directory.toPath();
     for (Map.Entry<Path, String> entry : storageState.entrySet()) {
@@ -221,13 +212,13 @@ public class ShadowEnvironment {
     return null;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected static boolean isExternalStorageRemovable(File path) {
     final Boolean exists = STORAGE_REMOVABLE.get(path);
     return exists != null ? exists : false;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected static boolean isExternalStorageEmulated(File path) {
     final Boolean emulated = STORAGE_EMULATED.get(path);
     return emulated != null ? emulated : false;
@@ -291,15 +282,7 @@ public class ShadowEnvironment {
       }
     }
 
-    if (RuntimeEnvironment.getApiLevel() >= JELLY_BEAN_MR1
-        && RuntimeEnvironment.getApiLevel() < KITKAT) {
-      if (externalDirs.size() == 1 && externalFileDir != null) {
-        Environment.UserEnvironment userEnvironment =
-            ReflectionHelpers.getStaticField(Environment.class, "sCurrentUser");
-        reflector(_UserEnvironment_.class, userEnvironment)
-            .setExternalStorageAndroidData(externalFileDir.toFile());
-      }
-    } else if (RuntimeEnvironment.getApiLevel() >= KITKAT && RuntimeEnvironment.getApiLevel() < M) {
+    if (RuntimeEnvironment.getApiLevel() < M) {
       Environment.UserEnvironment userEnvironment =
           ReflectionHelpers.getStaticField(Environment.class, "sCurrentUser");
       reflector(_UserEnvironment_.class, userEnvironment)
@@ -321,8 +304,7 @@ public class ShadowEnvironment {
     storageState.put(directory.toPath(), state);
   }
 
-  @Implements(className = "android.os.Environment$UserEnvironment", isInAndroidSdk = false,
-      minSdk = JELLY_BEAN_MR1)
+  @Implements(className = "android.os.Environment$UserEnvironment", isInAndroidSdk = false)
   public static class ShadowUserEnvironment {
 
     @Implementation(minSdk = M)

@@ -1,15 +1,14 @@
 package org.robolectric.shadows;
 
 import static android.bluetooth.BluetoothAdapter.STATE_ON;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR1;
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.M;
 import static android.os.Build.VERSION_CODES.O;
 import static android.os.Build.VERSION_CODES.Q;
 import static android.os.Build.VERSION_CODES.R;
+import static android.os.Build.VERSION_CODES.S;
 import static android.os.Build.VERSION_CODES.S_V2;
 import static android.os.Build.VERSION_CODES.TIRAMISU;
+import static android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 import static org.robolectric.Shadows.shadowOf;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
@@ -22,17 +21,18 @@ import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.bluetooth.BluetoothStatusCodes;
-import android.bluetooth.IBluetoothManager;
-import android.bluetooth.IBluetoothProfileServiceConnection;
+import android.bluetooth.IBluetoothGatt;
 import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.bluetooth.le.BluetoothLeScanner;
-import android.content.AttributionSource;
 import android.content.Context;
+import android.os.Binder;
 import android.os.Build;
 import android.os.Build.VERSION_CODES;
+import android.os.IBinder;
+import android.os.IInterface;
 import android.os.ParcelUuid;
-import android.os.RemoteException;
 import android.provider.Settings;
+import android.util.Log;
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.time.Duration;
@@ -53,11 +53,11 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.annotation.Resetter;
 import org.robolectric.util.ReflectionHelpers;
-import org.robolectric.util.ReflectionHelpers.ClassParameter;
 import org.robolectric.util.reflector.Accessor;
 import org.robolectric.util.reflector.Direct;
 import org.robolectric.util.reflector.ForType;
 import org.robolectric.util.reflector.Static;
+import org.robolectric.versioning.AndroidVersions.V;
 
 @SuppressWarnings({"UnusedDeclaration"})
 @Implements(value = BluetoothAdapter.class, looseSignatures = true)
@@ -101,7 +101,10 @@ public class ShadowBluetoothAdapter {
   private boolean isBleScanAlwaysAvailable = true;
   private boolean isMultipleAdvertisementSupported = true;
   private int isLeAudioSupported = BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;
+  private int isDistanceMeasurementSupported = BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;
   private boolean isLeExtendedAdvertisingSupported = true;
+  private boolean isLeCodedPhySupported = true;
+  private boolean isLe2MPhySupported = true;
   private boolean isOverridingProxyBehavior;
   private final Map<Integer, Integer> profileConnectionStateData = new HashMap<>();
   private final Map<Integer, BluetoothProfile> profileProxies = new HashMap<>();
@@ -109,13 +112,14 @@ public class ShadowBluetoothAdapter {
       new ConcurrentHashMap<>();
   private final Map<Integer, List<BluetoothProfile.ServiceListener>>
       bluetoothProfileServiceListeners = new HashMap<>();
+  private IBluetoothGatt ibluetoothGatt;
 
   @Resetter
   public static void reset() {
     setIsBluetoothSupported(true);
     BluetoothAdapterReflector bluetoothReflector = reflector(BluetoothAdapterReflector.class);
     int apiLevel = RuntimeEnvironment.getApiLevel();
-    if (apiLevel >= VERSION_CODES.LOLLIPOP && apiLevel <= VERSION_CODES.R) {
+    if (apiLevel <= VERSION_CODES.R) {
       bluetoothReflector.setSBluetoothLeAdvertiser(null);
       bluetoothReflector.setSBluetoothLeScanner(null);
     }
@@ -131,18 +135,6 @@ public class ShadowBluetoothAdapter {
     return reflector(BluetoothAdapterReflector.class).getDefaultAdapter();
   }
 
-  /** Requires LooseSignatures because of {@link AttributionSource} parameter */
-  @Implementation(minSdk = VERSION_CODES.TIRAMISU)
-  protected static Object createAdapter(Object attributionSource) {
-    IBluetoothManager service =
-        ReflectionHelpers.createDelegatingProxy(
-            IBluetoothManager.class, new BluetoothManagerDelegate());
-    return ReflectionHelpers.callConstructor(
-        BluetoothAdapter.class,
-        ClassParameter.from(IBluetoothManager.class, service),
-        ClassParameter.from(AttributionSource.class, attributionSource));
-  }
-
   /** Sets whether the Le Audio is supported or not. Minimum sdk version required is TIRAMISU. */
   public void setLeAudioSupported(int supported) {
     isLeAudioSupported = supported;
@@ -156,6 +148,19 @@ public class ShadowBluetoothAdapter {
   /** Determines if getDefaultAdapter() returns the default local adapter (true) or null (false). */
   public static void setIsBluetoothSupported(boolean supported) {
     isBluetoothSupported = supported;
+  }
+
+  /**
+   * Sets whether the distance measurement is supported or not. Minimum sdk version required is
+   * UPSIDE_DOWN_CAKE.
+   */
+  public void setDistanceMeasurementSupported(int supported) {
+    isDistanceMeasurementSupported = supported;
+  }
+
+  @Implementation(minSdk = UPSIDE_DOWN_CAKE)
+  protected int isDistanceMeasurementSupported() {
+    return isDistanceMeasurementSupported;
   }
 
   /**
@@ -190,11 +195,16 @@ public class ShadowBluetoothAdapter {
   }
 
   @Implementation
+  @Nullable
   protected Set<BluetoothDevice> getBondedDevices() {
+    // real android will return null in error conditions
+    if (bondedDevices == null) {
+      return null;
+    }
     return Collections.unmodifiableSet(bondedDevices);
   }
 
-  public void setBondedDevices(Set<BluetoothDevice> bluetoothDevices) {
+  public void setBondedDevices(@Nullable Set<BluetoothDevice> bluetoothDevices) {
     bondedDevices = bluetoothDevices;
   }
 
@@ -277,12 +287,12 @@ public class ShadowBluetoothAdapter {
         != 0;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected boolean startLeScan(LeScanCallback callback) {
     return startLeScan(null, callback);
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected boolean startLeScan(UUID[] serviceUuids, LeScanCallback callback) {
     if (Build.VERSION.SDK_INT >= M && !realAdapter.isLeEnabled()) {
       return false;
@@ -293,7 +303,7 @@ public class ShadowBluetoothAdapter {
     return true;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected void stopLeScan(LeScanCallback callback) {
     leScanCallbacks.remove(callback);
   }
@@ -361,21 +371,21 @@ public class ShadowBluetoothAdapter {
    * Needs looseSignatures because in Android T the return value of this method was changed from
    * bool to int.
    */
-  @Implementation
-  protected Object setScanMode(int scanMode) {
-    boolean result = true;
-    if (scanMode != BluetoothAdapter.SCAN_MODE_CONNECTABLE
-        && scanMode != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE
-        && scanMode != BluetoothAdapter.SCAN_MODE_NONE) {
-      result = false;
-    }
-
+  @Implementation(maxSdk = S_V2)
+  protected boolean setScanMode(int scanMode) {
+    boolean result =
+        scanMode == BluetoothAdapter.SCAN_MODE_CONNECTABLE
+            || scanMode == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE
+            || scanMode == BluetoothAdapter.SCAN_MODE_NONE;
     this.scanMode = scanMode;
-    if (RuntimeEnvironment.getApiLevel() >= VERSION_CODES.TIRAMISU) {
-      return result ? BluetoothStatusCodes.SUCCESS : BluetoothStatusCodes.ERROR_UNKNOWN;
-    } else {
-      return result;
-    }
+    return result;
+  }
+
+  @Implementation(minSdk = TIRAMISU, methodName = "setScanMode")
+  protected int setScanModeFromT(int scanMode) {
+    return setScanMode(scanMode)
+        ? BluetoothStatusCodes.SUCCESS
+        : BluetoothStatusCodes.ERROR_UNKNOWN;
   }
 
   @Implementation(maxSdk = Q)
@@ -427,7 +437,7 @@ public class ShadowBluetoothAdapter {
     return BluetoothStatusCodes.SUCCESS;
   }
 
-  @Implementation(minSdk = LOLLIPOP)
+  @Implementation
   protected boolean isMultipleAdvertisementSupported() {
     return isMultipleAdvertisementSupported;
   }
@@ -605,6 +615,30 @@ public class ShadowBluetoothAdapter {
     }
   }
 
+  @Implementation(minSdk = V.SDK_INT)
+  protected IBinder getProfile(int profile) {
+    if (isEnabled()) {
+      IInterface localProxy = createBinderProfileProxy(profile);
+      if (localProxy != null) {
+        Binder binder = new Binder();
+        binder.attachInterface(localProxy, "profile");
+        return binder;
+      }
+    }
+    return null;
+  }
+
+  private static IInterface createBinderProfileProxy(int profile) {
+    switch (profile) {
+      case BluetoothProfile.HEADSET:
+        return ReflectionHelpers.createNullProxy(android.bluetooth.IBluetoothHeadset.class);
+      case BluetoothProfile.A2DP:
+        return ReflectionHelpers.createNullProxy(android.bluetooth.IBluetoothA2dp.class);
+    }
+    Log.w("ShadowBluetoothAdapter", "getProfile called with unsupported profile " + profile);
+    return null;
+  }
+
   /** Returns the last value of {@link #setIsLeExtendedAdvertisingSupported}, defaulting to true. */
   @Implementation(minSdk = O)
   protected boolean isLeExtendedAdvertisingSupported() {
@@ -616,6 +650,28 @@ public class ShadowBluetoothAdapter {
    */
   public void setIsLeExtendedAdvertisingSupported(boolean supported) {
     isLeExtendedAdvertisingSupported = supported;
+  }
+
+  /** Returns the last value of {@link #setIsLeCodedPhySupported}, defaulting to true. */
+  @Implementation(minSdk = UPSIDE_DOWN_CAKE)
+  protected boolean isLeCodedPhySupported() {
+    return isLeCodedPhySupported;
+  }
+
+  /** Sets the {@link #isLeCodedPhySupported} to enable/disable LE coded phy supported featured. */
+  public void setIsLeCodedPhySupported(boolean supported) {
+    isLeCodedPhySupported = supported;
+  }
+
+  /** Returns the last value of {@link #setIsLe2MPhySupported}, defaulting to true. */
+  @Implementation(minSdk = UPSIDE_DOWN_CAKE)
+  protected boolean isLe2MPhySupported() {
+    return isLe2MPhySupported;
+  }
+
+  /** Sets the {@link #isLe2MPhySupported} to enable/disable LE 2M phy supported featured. */
+  public void setIsLe2MPhySupported(boolean supported) {
+    isLe2MPhySupported = supported;
   }
 
   @Implementation(minSdk = O)
@@ -630,7 +686,7 @@ public class ShadowBluetoothAdapter {
     // PendingIntent#isImmutable throws an NPE if the component does not exist, so verify directly
     // against the flags for now.
     if ((shadowOf(pendingIntent).getFlags() & PendingIntent.FLAG_IMMUTABLE) == 0) {
-      throw new IllegalArgumentException("RFCOMM server PendingIntent must be marked immutable");
+      throw new IllegalArgumentException("RFCOMM servers PendingIntent must be marked immutable");
     }
 
     boolean[] isNewServerSocket = {false};
@@ -725,6 +781,21 @@ public class ShadowBluetoothAdapter {
     return Set.of(backgroundRfcommServers.keySet().toArray(new UUID[0]));
   }
 
+  @Implementation(minSdk = S)
+  protected int getNameLengthForAdvertise() {
+    return name.length();
+  }
+
+  // TODO: remove this method as it shouldn't be necessary.
+  //  Real android just calls IBluetoothManager.getBluetoothGatt
+  @Implementation(minSdk = V.SDK_INT)
+  protected IBluetoothGatt getBluetoothGatt() {
+    if (ibluetoothGatt == null) {
+      ibluetoothGatt = BluetoothGattProxyDelegate.createBluetoothGattProxy();
+    }
+    return ibluetoothGatt;
+  }
+
   private static final class BackgroundRfcommServerEntry {
     final BluetoothServerSocket serverSocket;
     final PendingIntent pendingIntent;
@@ -772,40 +843,5 @@ public class ShadowBluetoothAdapter {
     @Accessor("sBluetoothLeScanner")
     @Static
     void setSBluetoothLeScanner(BluetoothLeScanner scanner);
-  }
-
-  // Any BluetoothAdapter calls which need to invoke BluetoothManager methods can delegate those
-  // calls to this class. The default behavior for any methods not defined in this class is a no-op.
-  @SuppressWarnings("unused")
-  private static class BluetoothManagerDelegate {
-    /**
-     * Allows the internal BluetoothProfileConnector associated with a {@link BluetoothProfile} to
-     * automatically invoke the service connected callback.
-     */
-    public boolean bindBluetoothProfileService(
-        int bluetoothProfile, String serviceName, IBluetoothProfileServiceConnection proxy) {
-      if (!BluetoothAdapter.getDefaultAdapter().isEnabled()) {
-        return false;
-      }
-      try {
-        proxy.onServiceConnected(null, null);
-      } catch (RemoteException e) {
-        return false;
-      }
-      return true;
-    }
-
-    /**
-     * Allows the internal BluetoothProfileConnector associated with a {@link BluetoothProfile} to
-     * automatically invoke the service disconnected callback.
-     */
-    public void unbindBluetoothProfileService(
-        int bluetoothProfile, IBluetoothProfileServiceConnection proxy) {
-      try {
-        proxy.onServiceDisconnected(null);
-      } catch (RemoteException e) {
-        // nothing to do
-      }
-    }
   }
 }

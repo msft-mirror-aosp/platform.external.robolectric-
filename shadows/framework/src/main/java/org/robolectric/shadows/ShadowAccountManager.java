@@ -1,7 +1,5 @@
 package org.robolectric.shadows;
 
-import static android.os.Build.VERSION_CODES.JELLY_BEAN_MR2;
-import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static android.os.Build.VERSION_CODES.LOLLIPOP_MR1;
 import static android.os.Build.VERSION_CODES.O;
 
@@ -14,12 +12,12 @@ import android.accounts.AuthenticatorException;
 import android.accounts.IAccountManager;
 import android.accounts.OnAccountsUpdateListener;
 import android.accounts.OperationCanceledException;
+import android.annotation.Nullable;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
-import androidx.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
+import org.robolectric.annotation.Resetter;
 import org.robolectric.util.Scheduler.IdleState;
 
 @Implements(AccountManager.class)
@@ -43,6 +42,7 @@ public class ShadowAccountManager {
   private List<Account> accounts = new ArrayList<>();
   private Map<Account, Map<String, String>> authTokens = new HashMap<>();
   private Map<String, AuthenticatorDescription> authenticators = new LinkedHashMap<>();
+
   /**
    * Maps listeners to a set of account types. If null, the listener should be notified for changes
    * to accounts of any type. Otherwise, the listener is only notified of changes to accounts of the
@@ -56,10 +56,25 @@ public class ShadowAccountManager {
   private Map<Account, Set<String>> packageVisibleAccounts = new HashMap<>();
 
   private List<Bundle> addAccountOptionsList = new ArrayList<>();
-  private Handler mainHandler;
-  private RoboAccountManagerFuture pendingAddFuture;
-  private boolean authenticationErrorOnNextResponse = false;
-  private Intent removeAccountIntent;
+  private static Handler mainHandler;
+  private static RoboAccountManagerFuture pendingAddFuture;
+  private static boolean authenticationErrorOnNextResponse = false;
+  private static Intent removeAccountIntent;
+
+  @Resetter
+  public static void reset() {
+    if (mainHandler != null) {
+      mainHandler.removeCallbacksAndMessages(null);
+      mainHandler = null;
+    }
+
+    if (pendingAddFuture != null) {
+      pendingAddFuture.cancel(true);
+      pendingAddFuture = null;
+    }
+    authenticationErrorOnNextResponse = false;
+    removeAccountIntent = null;
+  }
 
   @Implementation
   protected void __constructor__(Context context, IAccountManager service) {
@@ -220,9 +235,7 @@ public class ShadowAccountManager {
     return false;
   }
 
-  /**
-   * Removes all accounts that have been added.
-   */
+  /** Removes all accounts that have been added. */
   public void removeAllAccounts() {
     passwords.clear();
     userData.clear();
@@ -523,7 +536,11 @@ public class ShadowAccountManager {
     private final Activity activity;
     private final Bundle resultBundle;
 
-    RoboAccountManagerFuture(AccountManagerCallback<Bundle> callback, Handler handler, String accountType, Activity activity) {
+    RoboAccountManagerFuture(
+        AccountManagerCallback<Bundle> callback,
+        Handler handler,
+        String accountType,
+        Activity activity) {
       super(callback, handler);
 
       this.accountType = accountType;
@@ -594,7 +611,8 @@ public class ShadowAccountManager {
   private Map<Account, String> previousNames = new HashMap<Account, String>();
 
   /**
-   * Sets the previous name for an account, which will be returned by {@link AccountManager#getPreviousName(Account)}.
+   * Sets the previous name for an account, which will be returned by {@link
+   * AccountManager#getPreviousName(Account)}.
    *
    * @param account User account.
    * @param previousName Previous account name.
@@ -603,8 +621,10 @@ public class ShadowAccountManager {
     previousNames.put(account, previousName);
   }
 
-  /** @see #setPreviousAccountName(Account, String) */
-  @Implementation(minSdk = LOLLIPOP)
+  /**
+   * @see #setPreviousAccountName(Account, String)
+   */
+  @Implementation
   protected String getPreviousName(Account account) {
     return previousNames.get(account);
   }
@@ -724,7 +744,7 @@ public class ShadowAccountManager {
     return future;
   }
 
-  @Implementation(minSdk = JELLY_BEAN_MR2)
+  @Implementation
   protected Account[] getAccountsByTypeForPackage(String type, String packageName) {
     List<Account> result = new ArrayList<>();
 
@@ -825,10 +845,12 @@ public class ShadowAccountManager {
     }
 
     @Override
-    public T getResult(long timeout, TimeUnit unit) throws OperationCanceledException, IOException, AuthenticatorException {
+    public T getResult(long timeout, TimeUnit unit)
+        throws OperationCanceledException, IOException, AuthenticatorException {
       return getResult();
     }
 
-    public abstract T doWork() throws OperationCanceledException, IOException, AuthenticatorException;
+    public abstract T doWork()
+        throws OperationCanceledException, IOException, AuthenticatorException;
   }
 }

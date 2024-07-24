@@ -2,12 +2,12 @@ package org.robolectric.gradle;
 
 import static org.gradle.api.artifacts.type.ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE;
 
-import com.android.build.gradle.internal.dependency.ExtractAarTransform;
-import com.google.common.base.Joiner;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.gradle.api.Action;
 import org.gradle.api.Plugin;
@@ -17,6 +17,7 @@ import org.gradle.api.artifacts.transform.TransformOutputs;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.jetbrains.annotations.NotNull;
+import org.robolectric.gradle.agp.ExtractAarTransform;
 
 /** Resolve aar dependencies into jars for non-Android projects. */
 public class AarDepsPlugin implements Plugin<Project> {
@@ -57,13 +58,17 @@ public class AarDepsPlugin implements Plugin<Project> {
             // incremental compile breaks (run `gradlew -i classes` twice to see impact):
             t ->
                 t.doFirst(
-                    new Action<Task>() {
+                    new Action<>() {
                       @Override
-                      public void execute(Task task) {
+                      public void execute(@NotNull Task task) {
                         List<File> aarFiles = AarDepsPlugin.this.findAarFiles(t.getClasspath());
                         if (!aarFiles.isEmpty()) {
                           throw new IllegalStateException(
-                              "AARs on classpath: " + Joiner.on("\n  ").join(aarFiles));
+                              "AARs on classpath: "
+                                  + aarFiles.stream()
+                                      .filter(Objects::nonNull)
+                                      .map(File::toString)
+                                      .collect(Collectors.joining("\n  ")));
                         }
                       }
                     }));
@@ -91,8 +96,9 @@ public class AarDepsPlugin implements Plugin<Project> {
       super.transform(
           new TransformOutputs() {
             // This is the one that ExtractAarTransform calls.
+            @NotNull
             @Override
-            public File dir(Object o) {
+            public File dir(@NotNull Object o) {
               // ExtractAarTransform needs a place to extract the AAR. We don't really need to
               // register this as an output, but it'd be tricky to avoid it.
               File dir = outputs.dir(o);
@@ -105,8 +111,9 @@ public class AarDepsPlugin implements Plugin<Project> {
               return outputs.dir(o);
             }
 
+            @NotNull
             @Override
-            public File file(Object o) {
+            public File file(@NotNull Object o) {
               throw new IllegalStateException("shouldn't be called");
             }
           });
